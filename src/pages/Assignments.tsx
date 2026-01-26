@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,6 +102,7 @@ function AssignmentCard({ assignment }: { assignment: Assignment }) {
 }
 
 export default function AssignmentsPage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("all");
 
@@ -120,7 +122,7 @@ export default function AssignmentsPage() {
         title="Домашні завдання" 
         description="Створення та перевірка завдань"
       >
-        <Button>
+        <Button onClick={() => navigate("/assignments/create")}>
           <Plus className="h-4 w-4 mr-2" />
           Нове завдання
         </Button>
@@ -200,7 +202,7 @@ export default function AssignmentsPage() {
               description="Створіть нове завдання для ваших студентів"
               action={{
                 label: "Створити завдання",
-                onClick: () => {},
+                onClick: () => navigate("/assignments/create"),
               }}
             />
           )}
