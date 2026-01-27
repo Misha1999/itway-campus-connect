@@ -244,12 +244,12 @@ export function EventFormDialog({
           {/* Teacher */}
           <div className="space-y-2">
             <Label>Викладач</Label>
-            <Select value={teacherId} onValueChange={setTeacherId}>
+            <Select value={teacherId || "__none__"} onValueChange={(v) => setTeacherId(v === "__none__" ? "" : v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Оберіть викладача" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Без викладача</SelectItem>
+                <SelectItem value="__none__">Без викладача</SelectItem>
                 {teachers.map((teacher) => (
                   <SelectItem key={teacher.id} value={teacher.user_id}>
                     {teacher.full_name}
@@ -262,12 +262,12 @@ export function EventFormDialog({
           {/* Room */}
           <div className="space-y-2">
             <Label>Аудиторія</Label>
-            <Select value={roomId} onValueChange={setRoomId}>
+            <Select value={roomId || "__online__"} onValueChange={(v) => setRoomId(v === "__online__" ? "" : v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Оберіть аудиторію" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Онлайн</SelectItem>
+                <SelectItem value="__online__">Онлайн</SelectItem>
                 {rooms.map((room) => (
                   <SelectItem key={room.id} value={room.id}>
                     {room.name} {room.capacity && `(${room.capacity} місць)`}
