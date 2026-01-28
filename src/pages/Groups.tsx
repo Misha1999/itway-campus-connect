@@ -6,6 +6,7 @@ import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,110 +22,32 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Search, MoreHorizontal, Upload, Users } from "lucide-react";
-
-interface Group {
-  id: string;
-  name: string;
-  course: string;
-  campus: string;
-  teacher: string;
-  studentCount: number;
-  format: "online" | "offline" | "hybrid";
-  status: "active" | "archived";
-  schedule: string;
-}
-
-// Demo data
-const demoGroups: Group[] = [
-  { id: "1", name: "PY-2024-A", course: "Python Advanced", campus: "ITway Долина", teacher: "Марія Петренко", studentCount: 12, format: "offline", status: "active", schedule: "Сб 14:00" },
-  { id: "2", name: "WD-2024-B", course: "Web Design Basics", campus: "ITway Долина", teacher: "Іван Сидоренко", studentCount: 10, format: "online", status: "active", schedule: "Нд 11:00" },
-  { id: "3", name: "RB-2024-C", course: "Roblox Studio", campus: "ITway Долина", teacher: "Олена Коваль", studentCount: 8, format: "offline", status: "active", schedule: "Сб 16:00" },
-  { id: "4", name: "3D-2024-A", course: "3D Modeling", campus: "ITway Долина", teacher: "Андрій Бондар", studentCount: 6, format: "hybrid", status: "active", schedule: "Пт 15:00" },
-  { id: "5", name: "PY-2023-B", course: "Python Basics", campus: "ITway Долина", teacher: "Марія Петренко", studentCount: 15, format: "offline", status: "archived", schedule: "Сб 10:00" },
-];
-
-const columns: Column<Group>[] = [
-  {
-    key: "name",
-    header: "Група",
-    cell: (row) => (
-      <div className="flex items-center gap-3">
-        <Avatar className="h-9 w-9">
-          <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
-            {row.name.slice(0, 2)}
-          </AvatarFallback>
-        </Avatar>
-        <div>
-          <p className="font-medium text-foreground">{row.name}</p>
-          <p className="text-sm text-muted-foreground">{row.course}</p>
-        </div>
-      </div>
-    ),
-  },
-  {
-    key: "teacher",
-    header: "Викладач",
-    cell: (row) => <span className="text-foreground">{row.teacher}</span>,
-  },
-  {
-    key: "students",
-    header: "Студенти",
-    cell: (row) => (
-      <div className="flex items-center gap-2">
-        <Users className="h-4 w-4 text-muted-foreground" />
-        <span>{row.studentCount}</span>
-      </div>
-    ),
-  },
-  {
-    key: "schedule",
-    header: "Розклад",
-    cell: (row) => <span className="text-muted-foreground">{row.schedule}</span>,
-  },
-  {
-    key: "format",
-    header: "Формат",
-    cell: (row) => <StatusBadge status={row.format} />,
-  },
-  {
-    key: "status",
-    header: "Статус",
-    cell: (row) => <StatusBadge status={row.status} />,
-  },
-  {
-    key: "actions",
-    header: "",
-    cell: () => (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem>Переглянути</DropdownMenuItem>
-          <DropdownMenuItem>Редагувати</DropdownMenuItem>
-          <DropdownMenuItem>Журнал групи</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem className="text-destructive">Архівувати</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
-    className: "w-12",
-  },
-];
+import { useGroups, type GroupData } from "@/hooks/use-groups";
+import { AddGroupDialog } from "@/components/groups";
 
 export default function GroupsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [formatFilter, setFormatFilter] = useState<string>("all");
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [showAddDialog, setShowAddDialog] = useState(false);
 
-  const filteredGroups = demoGroups.filter((group) => {
+  const {
+    groups,
+    campuses,
+    courses,
+    loading,
+    createGroup,
+    archiveGroup,
+    restoreGroup,
+  } = useGroups();
+
+  const filteredGroups = groups.filter((group) => {
     const matchesSearch = group.name.toLowerCase().includes(search.toLowerCase()) ||
-      group.course.toLowerCase().includes(search.toLowerCase()) ||
-      group.teacher.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || group.status === statusFilter;
+      (group.course_name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (group.teacher_name || "").toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === "all" || 
+      (statusFilter === "active" ? group.is_active : !group.is_active);
     const matchesFormat = formatFilter === "all" || group.format === formatFilter;
     return matchesSearch && matchesStatus && matchesFormat;
   });
@@ -147,6 +70,104 @@ export default function GroupsPage() {
     }
   };
 
+  const columns: Column<GroupData>[] = [
+    {
+      key: "name",
+      header: "Група",
+      cell: (row) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9">
+            <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
+              {row.name.slice(0, 2)}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <p className="font-medium text-foreground">{row.name}</p>
+            <p className="text-sm text-muted-foreground">{row.course_name || "Без курсу"}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "teacher",
+      header: "Викладач",
+      cell: (row) => <span className="text-foreground">{row.teacher_name || "—"}</span>,
+    },
+    {
+      key: "students",
+      header: "Студенти",
+      cell: (row) => (
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-muted-foreground" />
+          <span>{row.student_count}{row.max_students ? `/${row.max_students}` : ""}</span>
+        </div>
+      ),
+    },
+    {
+      key: "campus",
+      header: "Кампус",
+      cell: (row) => <span className="text-muted-foreground">{row.campus_name}</span>,
+    },
+    {
+      key: "format",
+      header: "Формат",
+      cell: (row) => <StatusBadge status={row.format} />,
+    },
+    {
+      key: "status",
+      header: "Статус",
+      cell: (row) => <StatusBadge status={row.is_active ? "active" : "archived"} />,
+    },
+    {
+      key: "actions",
+      header: "",
+      cell: (row) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem>Переглянути</DropdownMenuItem>
+            <DropdownMenuItem>Редагувати</DropdownMenuItem>
+            <DropdownMenuItem>Журнал групи</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {row.is_active ? (
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => archiveGroup(row.id)}
+              >
+                Архівувати
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => restoreGroup(row.id)}>
+                Відновити
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+      className: "w-12",
+    },
+  ];
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <PageHeader title="Групи" description="Керування навчальними групами">
+          <Skeleton className="h-10 w-24" />
+          <Skeleton className="h-10 w-32" />
+        </PageHeader>
+        <div className="space-y-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader 
@@ -157,7 +178,7 @@ export default function GroupsPage() {
           <Upload className="h-4 w-4 mr-2" />
           Імпорт
         </Button>
-        <Button>
+        <Button onClick={() => setShowAddDialog(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Нова група
         </Button>
@@ -232,10 +253,19 @@ export default function GroupsPage() {
           description="Створіть першу групу або змініть фільтри пошуку"
           action={{
             label: "Створити групу",
-            onClick: () => {},
+            onClick: () => setShowAddDialog(true),
           }}
         />
       )}
+
+      {/* Add Group Dialog */}
+      <AddGroupDialog
+        open={showAddDialog}
+        onOpenChange={setShowAddDialog}
+        campuses={campuses}
+        courses={courses}
+        onSave={createGroup}
+      />
     </div>
   );
 }

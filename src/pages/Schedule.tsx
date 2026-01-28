@@ -23,6 +23,7 @@ import {
 export default function SchedulePage() {
   const [view, setView] = useState("week");
   const [selectedGroupId, setSelectedGroupId] = useState("all");
+  const [selectedTeacherId, setSelectedTeacherId] = useState("all");
   const [showEventForm, setShowEventForm] = useState(false);
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
@@ -40,6 +41,11 @@ export default function SchedulePage() {
     cancelEvent,
     restoreEvent,
   } = useSchedule(selectedGroupId === "all" ? undefined : selectedGroupId);
+
+  // Filter events by teacher on client side
+  const filteredEvents = selectedTeacherId === "all"
+    ? events
+    : events.filter((e) => e.teacher_id === selectedTeacherId);
 
   const handleEventClick = (event: ScheduleEvent) => {
     setSelectedEvent(event);
@@ -75,6 +81,19 @@ export default function SchedulePage() {
             {groups.map((group) => (
               <SelectItem key={group.id} value={group.id}>
                 {group.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={selectedTeacherId} onValueChange={setSelectedTeacherId}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Викладач" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Всі викладачі</SelectItem>
+            {teachers.map((teacher) => (
+              <SelectItem key={teacher.id} value={teacher.user_id}>
+                {teacher.full_name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -116,14 +135,14 @@ export default function SchedulePage() {
           <>
             <TabsContent value="day" className="mt-6">
               <DayView
-                events={events}
+                events={filteredEvents}
                 onEventClick={handleEventClick}
                 onAddEvent={handleAddEvent}
               />
             </TabsContent>
             <TabsContent value="week" className="mt-6">
               <WeekView
-                events={events}
+                events={filteredEvents}
                 onEventClick={handleEventClick}
                 onAddEvent={handleAddEvent}
               />
