@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,33 +23,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, MoreHorizontal, Upload, Users, Mail, Phone } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Upload, Users } from "lucide-react";
+import { useUsers, type UserWithRole } from "@/hooks/use-users";
+import { AddUserDialog } from "@/components/users/AddUserDialog";
+import type { Database } from "@/integrations/supabase/types";
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: string;
-  campus: string;
-  groups: string[];
-  status: "active" | "archived" | "pending";
-  createdAt: string;
-}
+type AppRole = Database["public"]["Enums"]["app_role"];
 
-// Demo data
-const demoUsers: User[] = [
-  { id: "1", name: "Марія Петренко", email: "maria@itway.edu.ua", phone: "+380501234567", role: "teacher", campus: "ITway Долина", groups: ["PY-2024-A", "PY-2024-B"], status: "active", createdAt: "01.09.2024" },
-  { id: "2", name: "Іван Сидоренко", email: "ivan@itway.edu.ua", phone: "+380502345678", role: "teacher", campus: "ITway Долина", groups: ["WD-2024-B"], status: "active", createdAt: "15.09.2024" },
-  { id: "3", name: "Олена Коваль", email: "olena@itway.edu.ua", phone: "+380503456789", role: "teacher", campus: "ITway Долина", groups: ["RB-2024-C"], status: "active", createdAt: "01.10.2024" },
-  { id: "4", name: "Олександр Коваль", email: "oleksandr@gmail.com", phone: "+380661234567", role: "student", campus: "ITway Долина", groups: ["PY-2024-A"], status: "active", createdAt: "05.09.2024" },
-  { id: "5", name: "Марія Шевченко", email: "maria.shev@gmail.com", phone: "+380662345678", role: "student", campus: "ITway Долина", groups: ["PY-2024-A"], status: "active", createdAt: "05.09.2024" },
-  { id: "6", name: "Іван Бондаренко", email: "ivan.bond@gmail.com", phone: "+380663456789", role: "student", campus: "ITway Долина", groups: ["WD-2024-B"], status: "active", createdAt: "10.09.2024" },
-  { id: "7", name: "Анна Петренко", email: "anna.p@gmail.com", phone: "+380664567890", role: "student", campus: "ITway Долина", groups: ["WD-2024-B"], status: "pending", createdAt: "20.01.2025" },
-  { id: "8", name: "Дмитро Сидоренко", email: "dmytro@gmail.com", phone: "+380665678901", role: "student", campus: "ITway Долина", groups: ["RB-2024-C"], status: "active", createdAt: "12.09.2024" },
-];
-
-const roleLabels: Record<string, string> = {
+const roleLabels: Record<AppRole, string> = {
   admin_network: "Адмін мережі",
   admin_campus: "Адмін закладу",
   teacher: "Викладач",
@@ -56,7 +38,7 @@ const roleLabels: Record<string, string> = {
   parent_viewer: "Батьки",
 };
 
-const columns: Column<User>[] = [
+const getColumns = (): Column<UserWithRole>[] => [
   {
     key: "name",
     header: "Користувач",
@@ -64,12 +46,12 @@ const columns: Column<User>[] = [
       <div className="flex items-center gap-3">
         <Avatar className="h-9 w-9">
           <AvatarFallback className="bg-primary/10 text-primary text-sm">
-            {row.name.split(' ').map(n => n[0]).join('')}
+            {row.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
           </AvatarFallback>
         </Avatar>
         <div>
-          <p className="font-medium text-foreground">{row.name}</p>
-          <p className="text-sm text-muted-foreground">{row.email}</p>
+          <p className="font-medium text-foreground">{row.full_name}</p>
+          <p className="text-sm text-muted-foreground">{row.email || row.phone || "—"}</p>
         </div>
       </div>
     ),
@@ -78,7 +60,17 @@ const columns: Column<User>[] = [
     key: "role",
     header: "Роль",
     cell: (row) => (
-      <Badge variant="outline">{roleLabels[row.role]}</Badge>
+      <div className="flex flex-wrap gap-1">
+        {row.roles.length > 0 ? (
+          row.roles.map((role) => (
+            <Badge key={role} variant="outline">
+              {roleLabels[role]}
+            </Badge>
+          ))
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </div>
     ),
   },
   {
@@ -87,8 +79,8 @@ const columns: Column<User>[] = [
     cell: (row) => (
       <div className="flex flex-wrap gap-1">
         {row.groups.slice(0, 2).map((group) => (
-          <Badge key={group} variant="secondary" className="text-xs">
-            {group}
+          <Badge key={group.id} variant="secondary" className="text-xs">
+            {group.name}
           </Badge>
         ))}
         {row.groups.length > 2 && (
@@ -96,13 +88,16 @@ const columns: Column<User>[] = [
             +{row.groups.length - 2}
           </Badge>
         )}
+        {row.groups.length === 0 && (
+          <span className="text-muted-foreground">—</span>
+        )}
       </div>
     ),
   },
   {
     key: "phone",
     header: "Телефон",
-    cell: (row) => <span className="text-muted-foreground">{row.phone}</span>,
+    cell: (row) => <span className="text-muted-foreground">{row.phone || "—"}</span>,
   },
   {
     key: "status",
@@ -133,16 +128,21 @@ const columns: Column<User>[] = [
 ];
 
 export default function UsersPage() {
+  const { users, campuses, loading, refetch } = useUsers();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [showAddUser, setShowAddUser] = useState(false);
 
-  const filteredUsers = demoUsers.filter((user) => {
-    const matchesSearch = user.name.toLowerCase().includes(search.toLowerCase()) ||
-      user.email.toLowerCase().includes(search.toLowerCase());
-    const matchesRole = roleFilter === "all" || user.role === roleFilter;
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch = user.full_name.toLowerCase().includes(search.toLowerCase()) ||
+      (user.email?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      (user.phone?.includes(search) ?? false);
+    
+    const matchesRole = roleFilter === "all" || user.roles.includes(roleFilter as AppRole);
     const matchesStatus = statusFilter === "all" || user.status === statusFilter;
+    
     return matchesSearch && matchesRole && matchesStatus;
   });
 
@@ -164,8 +164,29 @@ export default function UsersPage() {
     }
   };
 
-  const teachers = filteredUsers.filter(u => u.role === "teacher");
-  const students = filteredUsers.filter(u => u.role === "student");
+  const teachers = filteredUsers.filter(u => u.roles.includes("teacher"));
+  const students = filteredUsers.filter(u => u.roles.includes("student"));
+
+  const columns = getColumns();
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <PageHeader title="Користувачі" description="Керування користувачами системи">
+          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-40" />
+        </PageHeader>
+        <div className="space-y-4">
+          <div className="flex gap-4">
+            <Skeleton className="h-10 flex-1 max-w-sm" />
+            <Skeleton className="h-10 w-[150px]" />
+            <Skeleton className="h-10 w-[150px]" />
+          </div>
+          <Skeleton className="h-[400px] w-full" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -177,7 +198,7 @@ export default function UsersPage() {
           <Upload className="h-4 w-4 mr-2" />
           Імпорт CSV
         </Button>
-        <Button>
+        <Button onClick={() => setShowAddUser(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Додати користувача
         </Button>
@@ -252,6 +273,7 @@ export default function UsersPage() {
               selectedRows={selectedRows}
               onSelectRow={handleSelectRow}
               onSelectAll={handleSelectAll}
+              getRowId={(row) => row.id}
             />
           ) : (
             <EmptyState
@@ -260,32 +282,66 @@ export default function UsersPage() {
               description="Додайте першого користувача або змініть фільтри"
               action={{
                 label: "Додати користувача",
-                onClick: () => {},
+                onClick: () => setShowAddUser(true),
               }}
             />
           )}
         </TabsContent>
         <TabsContent value="teachers" className="mt-6">
-          <DataTable
-            columns={columns}
-            data={teachers}
-            selectable
-            selectedRows={selectedRows}
-            onSelectRow={handleSelectRow}
-            onSelectAll={handleSelectAll}
-          />
+          {teachers.length > 0 ? (
+            <DataTable
+              columns={columns}
+              data={teachers}
+              selectable
+              selectedRows={selectedRows}
+              onSelectRow={handleSelectRow}
+              onSelectAll={handleSelectAll}
+              getRowId={(row) => row.id}
+            />
+          ) : (
+            <EmptyState
+              icon={Users}
+              title="Викладачів не знайдено"
+              description="Додайте викладача до системи"
+              action={{
+                label: "Додати викладача",
+                onClick: () => setShowAddUser(true),
+              }}
+            />
+          )}
         </TabsContent>
         <TabsContent value="students" className="mt-6">
-          <DataTable
-            columns={columns}
-            data={students}
-            selectable
-            selectedRows={selectedRows}
-            onSelectRow={handleSelectRow}
-            onSelectAll={handleSelectAll}
-          />
+          {students.length > 0 ? (
+            <DataTable
+              columns={columns}
+              data={students}
+              selectable
+              selectedRows={selectedRows}
+              onSelectRow={handleSelectRow}
+              onSelectAll={handleSelectAll}
+              getRowId={(row) => row.id}
+            />
+          ) : (
+            <EmptyState
+              icon={Users}
+              title="Студентів не знайдено"
+              description="Додайте студента до системи"
+              action={{
+                label: "Додати студента",
+                onClick: () => setShowAddUser(true),
+              }}
+            />
+          )}
         </TabsContent>
       </Tabs>
+
+      {/* Add User Dialog */}
+      <AddUserDialog
+        open={showAddUser}
+        onOpenChange={setShowAddUser}
+        campuses={campuses}
+        onSuccess={refetch}
+      />
     </div>
   );
 }
