@@ -1,31 +1,56 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { toast } = useToast();
+
+  useEffect(() => {
+    // Check if already logged in
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate("/dashboard");
+      }
+    };
+    checkSession();
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Demo login - navigate to dashboard
-    setTimeout(() => {
-      setIsLoading(false);
-      toast({
-        title: "Вхід успішний",
-        description: "Ласкаво просимо до ITway LMS",
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
-      navigate("/dashboard");
-    }, 1000);
+
+      if (error) {
+        toast.error(error.message === "Invalid login credentials" 
+          ? "Невірний email або пароль" 
+          : error.message);
+        return;
+      }
+
+      if (data.session) {
+        toast.success("Вхід успішний");
+        navigate("/dashboard");
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      toast.error("Помилка входу в систему");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -65,8 +90,8 @@ export default function LoginPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">Пароль</Label>
-                  <Link 
-                    to="/forgot-password" 
+                  <Link
+                    to="/forgot-password"
                     className="text-sm text-primary hover:underline"
                   >
                     Забули пароль?
@@ -86,18 +111,6 @@ export default function LoginPage() {
                 {isLoading ? "Завантаження..." : "Увійти"}
               </Button>
             </form>
-          </CardContent>
-        </Card>
-
-        {/* Demo accounts info */}
-        <Card className="border-border bg-muted/50">
-          <CardContent className="pt-4">
-            <p className="text-sm font-medium text-foreground mb-2">Демо-акаунти:</p>
-            <div className="space-y-1 text-sm text-muted-foreground">
-              <p>admin@itway.edu.ua (Адмін мережі)</p>
-              <p>teacher@itway.edu.ua (Викладач)</p>
-              <p>student@itway.edu.ua (Студент)</p>
-            </div>
           </CardContent>
         </Card>
       </div>
