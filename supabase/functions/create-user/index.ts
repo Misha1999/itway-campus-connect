@@ -14,6 +14,57 @@ interface CreateUserRequest {
   birth_date?: string;
   role: "admin_network" | "admin_campus" | "teacher" | "student" | "parent_viewer";
   campus_id?: string;
+  study_program_id?: string;
+  enrollment_cohort_id?: string;
+  generate_credentials?: boolean;
+}
+
+function generateLogin(fullName: string, campusDomain?: string): string {
+  // Transliterate Ukrainian to Latin
+  const translitMap: Record<string, string> = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'h', 'ґ': 'g', 'д': 'd', 'е': 'e', 'є': 'ye',
+    'ж': 'zh', 'з': 'z', 'и': 'y', 'і': 'i', 'ї': 'yi', 'й': 'y', 'к': 'k', 'л': 'l',
+    'м': 'm', 'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ь': '', 'ю': 'yu',
+    'я': 'ya', "'": '', 'ы': 'y', 'э': 'e', 'ё': 'yo',
+  };
+
+  const nameParts = fullName.toLowerCase().split(' ').filter(Boolean);
+  let login = '';
+
+  if (nameParts.length >= 2) {
+    // Last name + first letter of first name
+    const lastName = nameParts[0];
+    const firstName = nameParts[1];
+    login = lastName + '.' + firstName[0];
+  } else if (nameParts.length === 1) {
+    login = nameParts[0];
+  }
+
+  // Transliterate
+  login = login.split('').map(char => translitMap[char] || char).join('');
+  
+  // Remove non-alphanumeric except dots
+  login = login.replace(/[^a-z0-9.]/g, '');
+
+  // Add random number for uniqueness
+  const randomNum = Math.floor(Math.random() * 900) + 100;
+  login = `${login}${randomNum}`;
+
+  if (campusDomain) {
+    return `${login}@${campusDomain}`;
+  }
+  
+  return login;
+}
+
+function generatePassword(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let password = '';
+  for (let i = 0; i < 10; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
 }
 
 serve(async (req) => {
@@ -68,7 +119,38 @@ serve(async (req) => {
 
     // Parse request body
     const body: CreateUserRequest = await req.json();
-    const { email, password, full_name, phone, birth_date, role, campus_id } = body;
+    let { email, password, full_name, phone, birth_date, role, campus_id, study_program_id, enrollment_cohort_id, generate_credentials } = body;
+
+    // Generate credentials for students if requested
+    let generatedLogin: string | null = null;
+    let generatedPassword: string | null = null;
+
+    if (role === 'student' && generate_credentials) {
+      // Get campus domain if available
+      let campusDomain: string | undefined;
+      if (campus_id) {
+        const { data: campus } = await supabaseAdmin
+          .from("campuses")
+          .select("email")
+          .eq("id", campus_id)
+          .single();
+        
+        if (campus?.email) {
+          // Extract domain from campus email
+          const emailParts = campus.email.split('@');
+          if (emailParts.length > 1) {
+            campusDomain = emailParts[1];
+          }
+        }
+      }
+
+      generatedLogin = generateLogin(full_name, campusDomain);
+      generatedPassword = generatePassword();
+      
+      // Use generated credentials
+      email = generatedLogin;
+      password = generatedPassword;
+    }
 
     // Validate required fields
     if (!email || !password || !full_name || !role) {
@@ -103,13 +185,27 @@ serve(async (req) => {
     }
 
     // Update the profile with additional info
+    const profileUpdate: Record<string, unknown> = {
+      full_name,
+      phone: phone || null,
+      birth_date: birth_date || null,
+    };
+
+    // Add student-specific fields
+    if (role === 'student') {
+      profileUpdate.study_program_id = study_program_id || null;
+      profileUpdate.enrollment_cohort_id = enrollment_cohort_id || null;
+      
+      if (generatedLogin && generatedPassword) {
+        profileUpdate.generated_login = generatedLogin;
+        // Store password hash (simple encoding for admin viewing - in production use proper encryption)
+        profileUpdate.generated_password_hash = btoa(generatedPassword);
+      }
+    }
+
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
-      .update({
-        full_name,
-        phone: phone || null,
-        birth_date: birth_date || null,
-      })
+      .update(profileUpdate)
       .eq("user_id", newUser.user.id);
 
     if (profileError) {
@@ -155,6 +251,8 @@ serve(async (req) => {
           email: newUser.user.email,
           full_name,
           role,
+          generated_login: generatedLogin,
+          generated_password: generatedPassword,
         },
       }),
       {

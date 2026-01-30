@@ -18,6 +18,10 @@ export interface UserWithRole {
   roles: AppRole[];
   campuses: { id: string; name: string }[];
   groups: { id: string; name: string }[];
+  study_program_id: string | null;
+  enrollment_cohort_id: string | null;
+  generated_login: string | null;
+  generated_password_hash: string | null;
 }
 
 export interface Campus {
@@ -112,7 +116,7 @@ export function useUsers() {
         id: profile.id,
         user_id: profile.user_id,
         full_name: profile.full_name,
-        email: "", // Will be populated if we add email to profiles or fetch from auth
+        email: (profile as Record<string, unknown>).generated_login as string || "",
         phone: profile.phone,
         birth_date: profile.birth_date,
         avatar_url: profile.avatar_url,
@@ -121,6 +125,10 @@ export function useUsers() {
         roles: userRoles,
         campuses: userCampuses,
         groups: userGroups,
+        study_program_id: (profile as Record<string, unknown>).study_program_id as string | null,
+        enrollment_cohort_id: (profile as Record<string, unknown>).enrollment_cohort_id as string | null,
+        generated_login: (profile as Record<string, unknown>).generated_login as string | null,
+        generated_password_hash: (profile as Record<string, unknown>).generated_password_hash as string | null,
       };
     });
 

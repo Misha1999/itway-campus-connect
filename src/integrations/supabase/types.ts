@@ -471,6 +471,41 @@ export type Database = {
         }
         Relationships: []
       }
+      enrollment_cohorts: {
+        Row: {
+          campus_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          start_date: string | null
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          start_date?: string | null
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          start_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrollment_cohorts_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       grades: {
         Row: {
           assignment_id: string | null
@@ -580,6 +615,7 @@ export type Database = {
           course_id: string | null
           created_at: string
           end_date: string | null
+          enrollment_cohort_id: string | null
           format: Database["public"]["Enums"]["group_format"]
           id: string
           is_active: boolean
@@ -588,6 +624,7 @@ export type Database = {
           name: string
           schedule_template: Json | null
           start_date: string | null
+          study_program_id: string | null
           updated_at: string
         }
         Insert: {
@@ -596,6 +633,7 @@ export type Database = {
           course_id?: string | null
           created_at?: string
           end_date?: string | null
+          enrollment_cohort_id?: string | null
           format?: Database["public"]["Enums"]["group_format"]
           id?: string
           is_active?: boolean
@@ -604,6 +642,7 @@ export type Database = {
           name: string
           schedule_template?: Json | null
           start_date?: string | null
+          study_program_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -612,6 +651,7 @@ export type Database = {
           course_id?: string | null
           created_at?: string
           end_date?: string | null
+          enrollment_cohort_id?: string | null
           format?: Database["public"]["Enums"]["group_format"]
           id?: string
           is_active?: boolean
@@ -620,6 +660,7 @@ export type Database = {
           name?: string
           schedule_template?: Json | null
           start_date?: string | null
+          study_program_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -635,6 +676,20 @@ export type Database = {
             columns: ["course_id"]
             isOneToOne: false
             referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "groups_enrollment_cohort_id_fkey"
+            columns: ["enrollment_cohort_id"]
+            isOneToOne: false
+            referencedRelation: "enrollment_cohorts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "groups_study_program_id_fkey"
+            columns: ["study_program_id"]
+            isOneToOne: false
+            referencedRelation: "study_programs"
             referencedColumns: ["id"]
           },
         ]
@@ -771,11 +826,15 @@ export type Database = {
           avatar_url: string | null
           birth_date: string | null
           created_at: string
+          enrollment_cohort_id: string | null
           full_name: string
+          generated_login: string | null
+          generated_password_hash: string | null
           id: string
           notes: string | null
           phone: string | null
           status: Database["public"]["Enums"]["user_status"]
+          study_program_id: string | null
           updated_at: string
           user_id: string
         }
@@ -783,11 +842,15 @@ export type Database = {
           avatar_url?: string | null
           birth_date?: string | null
           created_at?: string
+          enrollment_cohort_id?: string | null
           full_name: string
+          generated_login?: string | null
+          generated_password_hash?: string | null
           id?: string
           notes?: string | null
           phone?: string | null
           status?: Database["public"]["Enums"]["user_status"]
+          study_program_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -795,15 +858,34 @@ export type Database = {
           avatar_url?: string | null
           birth_date?: string | null
           created_at?: string
+          enrollment_cohort_id?: string | null
           full_name?: string
+          generated_login?: string | null
+          generated_password_hash?: string | null
           id?: string
           notes?: string | null
           phone?: string | null
           status?: Database["public"]["Enums"]["user_status"]
+          study_program_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_enrollment_cohort_id_fkey"
+            columns: ["enrollment_cohort_id"]
+            isOneToOne: false
+            referencedRelation: "enrollment_cohorts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_study_program_id_fkey"
+            columns: ["study_program_id"]
+            isOneToOne: false
+            referencedRelation: "study_programs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rooms: {
         Row: {
@@ -912,6 +994,44 @@ export type Database = {
             columns: ["room_id"]
             isOneToOne: false
             referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      study_programs: {
+        Row: {
+          campus_id: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "study_programs_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
             referencedColumns: ["id"]
           },
         ]
