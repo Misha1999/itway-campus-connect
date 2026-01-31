@@ -1,4 +1,7 @@
+import { useNavigate } from "react-router-dom";
 import { Bell, Search, User } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +19,19 @@ interface HeaderProps {
 }
 
 export function Header({ title }: HeaderProps) {
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast.success("Ви вийшли з системи");
+      navigate("/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast.error("Помилка виходу");
+    }
+  };
+
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center gap-4 px-4 lg:px-6">
@@ -68,7 +84,9 @@ export function Header({ title }: HeaderProps) {
               <DropdownMenuItem>Мій профіль</DropdownMenuItem>
               <DropdownMenuItem>Налаштування</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive">Вийти</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleLogout} className="text-destructive cursor-pointer">
+                Вийти
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -49,6 +51,18 @@ interface SidebarProps {
 export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast.success("Ви вийшли з системи");
+      navigate("/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast.error("Помилка виходу");
+    }
+  };
 
   const SidebarContent = ({ isMobile = false }: { isMobile?: boolean }) => (
     <div className={cn(
@@ -103,10 +117,13 @@ export function Sidebar({ className }: SidebarProps) {
 
       {/* User section */}
       <div className="p-2 border-t border-border">
-        <button className={cn(
-          "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium w-full",
-          "text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-        )}>
+        <button 
+          onClick={handleLogout}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium w-full",
+            "text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          )}
+        >
           <LogOut className="h-5 w-5 flex-shrink-0" />
           {(!collapsed || isMobile) && <span>Вийти</span>}
         </button>
