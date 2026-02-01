@@ -20,6 +20,7 @@ interface AddCampusDialogProps {
     address?: string;
     phone?: string;
     email?: string;
+    email_domain?: string;
   }) => Promise<boolean>;
 }
 
@@ -34,6 +35,7 @@ export function AddCampusDialog({
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [emailDomain, setEmailDomain] = useState("");
 
   const resetForm = () => {
     setName("");
@@ -41,6 +43,7 @@ export function AddCampusDialog({
     setAddress("");
     setPhone("");
     setEmail("");
+    setEmailDomain("");
   };
 
   const handleSubmit = async () => {
@@ -53,6 +56,7 @@ export function AddCampusDialog({
       address: address || undefined,
       phone: phone || undefined,
       email: email || undefined,
+      email_domain: emailDomain || undefined,
     });
 
     if (success) {
@@ -120,6 +124,19 @@ export function AddCampusDialog({
               onChange={(e) => setEmail(e.target.value)}
               placeholder="office@itway.com"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="emailDomain">Домен пошти користувачів</Label>
+            <Input
+              id="emailDomain"
+              value={emailDomain}
+              onChange={(e) => setEmailDomain(e.target.value)}
+              placeholder="itway.dolyna.ua"
+            />
+            <p className="text-xs text-muted-foreground">
+              Логіни користувачів будуть створюватись у цьому домені
+            </p>
           </div>
         </div>
 

@@ -23,12 +23,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, MoreHorizontal, Upload, Users, Eye, Pencil, UserPlus, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Upload, Users, Eye, Pencil, UserPlus, Archive, ArchiveRestore, Key } from "lucide-react";
 import { useUsers, type UserWithRole } from "@/hooks/use-users";
 import {
   AddUserDialog,
   UserProfileDialog,
   EditUserDialog,
+  EditCredentialsDialog,
   ChangeGroupDialog,
   ArchiveUserDialog,
 } from "@/components/users";
@@ -48,11 +49,12 @@ interface UserActionsProps {
   user: UserWithRole;
   onViewProfile: (user: UserWithRole) => void;
   onEdit: (user: UserWithRole) => void;
+  onEditCredentials: (user: UserWithRole) => void;
   onChangeGroup: (user: UserWithRole) => void;
   onArchive: (user: UserWithRole) => void;
 }
 
-function UserActions({ user, onViewProfile, onEdit, onChangeGroup, onArchive }: UserActionsProps) {
+function UserActions({ user, onViewProfile, onEdit, onEditCredentials, onChangeGroup, onArchive }: UserActionsProps) {
   const isArchived = user.status === "archived";
 
   return (
@@ -70,6 +72,10 @@ function UserActions({ user, onViewProfile, onEdit, onChangeGroup, onArchive }: 
         <DropdownMenuItem onClick={() => onEdit(user)}>
           <Pencil className="h-4 w-4 mr-2" />
           Редагувати
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onEditCredentials(user)}>
+          <Key className="h-4 w-4 mr-2" />
+          Змінити email/пароль
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onChangeGroup(user)}>
           <UserPlus className="h-4 w-4 mr-2" />
@@ -119,6 +125,10 @@ export default function UsersPage() {
     user: null,
   });
   const [archiveDialog, setArchiveDialog] = useState<{ open: boolean; user: UserWithRole | null }>({
+    open: false,
+    user: null,
+  });
+  const [credentialsDialog, setCredentialsDialog] = useState<{ open: boolean; user: UserWithRole | null }>({
     open: false,
     user: null,
   });
@@ -232,6 +242,7 @@ export default function UsersPage() {
           user={row}
           onViewProfile={(u) => setProfileDialog({ open: true, user: u })}
           onEdit={(u) => setEditDialog({ open: true, user: u })}
+          onEditCredentials={(u) => setCredentialsDialog({ open: true, user: u })}
           onChangeGroup={(u) => setGroupDialog({ open: true, user: u })}
           onArchive={(u) => setArchiveDialog({ open: true, user: u })}
         />
@@ -435,6 +446,13 @@ export default function UsersPage() {
         open={archiveDialog.open}
         onOpenChange={(open) => setArchiveDialog({ ...archiveDialog, open })}
         user={archiveDialog.user}
+        onSuccess={refetch}
+      />
+
+      <EditCredentialsDialog
+        open={credentialsDialog.open}
+        onOpenChange={(open) => setCredentialsDialog({ ...credentialsDialog, open })}
+        user={credentialsDialog.user}
         onSuccess={refetch}
       />
     </div>

@@ -264,6 +264,7 @@ export type Database = {
           city: string
           created_at: string
           email: string | null
+          email_domain: string | null
           id: string
           is_active: boolean
           logo_url: string | null
@@ -279,6 +280,7 @@ export type Database = {
           city: string
           created_at?: string
           email?: string | null
+          email_domain?: string | null
           id?: string
           is_active?: boolean
           logo_url?: string | null
@@ -294,6 +296,7 @@ export type Database = {
           city?: string
           created_at?: string
           email?: string | null
+          email_domain?: string | null
           id?: string
           is_active?: boolean
           logo_url?: string | null

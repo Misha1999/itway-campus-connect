@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Building2, Users, GraduationCap, MoreHorizontal, MapPin, Phone, UserCog } from "lucide-react";
+import { Plus, Building2, Users, GraduationCap, MoreHorizontal, MapPin, Phone, UserCog, Eye } from "lucide-react";
 import { useCampuses, CampusWithStats } from "@/hooks/use-campuses";
 import { AddCampusDialog, AssignAdminDialog } from "@/components/campuses";
 
@@ -84,6 +85,7 @@ const columns: Column<CampusWithStats>[] = [
 ];
 
 export default function CampusesPage() {
+  const navigate = useNavigate();
   const { campuses, loading, refetch, createCampus, toggleCampusStatus } = useCampuses();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [assignAdminDialog, setAssignAdminDialog] = useState<{
@@ -110,6 +112,10 @@ export default function CampusesPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => navigate(`/campuses/${row.id}`)}>
+              <Eye className="h-4 w-4 mr-2" />
+              Переглянути
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
                 setAssignAdminDialog({
