@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,9 +15,115 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { User, Bell, Shield, Palette, Save } from "lucide-react";
+import { User, Bell, Shield, Palette, Save, Loader2, Eye, EyeOff } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+interface ProfileData {
+  full_name: string;
+  phone: string;
+  email: string;
+}
 
 export default function SettingsPage() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [profile, setProfile] = useState<ProfileData>({
+    full_name: "",
+    phone: "",
+    email: "",
+  });
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    async function fetchProfile() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("full_name, phone")
+        .eq("user_id", user.id)
+        .single();
+
+      setProfile({
+        full_name: profileData?.full_name || "",
+        phone: profileData?.phone || "",
+        email: user.email || "",
+      });
+      setLoading(false);
+    }
+
+    fetchProfile();
+  }, []);
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Користувача не знайдено");
+      setSaving(false);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        full_name: profile.full_name,
+        phone: profile.phone || null,
+      })
+      .eq("user_id", user.id);
+
+    if (error) {
+      toast.error("Помилка збереження профілю");
+    } else {
+      toast.success("Профіль оновлено");
+    }
+    setSaving(false);
+  };
+
+  const handleChangePassword = async () => {
+    if (newPassword !== confirmPassword) {
+      toast.error("Паролі не співпадають");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.error("Пароль має бути не менше 6 символів");
+      return;
+    }
+
+    setSavingPassword(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Пароль змінено");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    }
+    setSavingPassword(false);
+  };
+
+  const initials = profile.full_name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2) || "??";
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader 
@@ -57,7 +164,7 @@ export default function SettingsPage() {
               <div className="flex items-center gap-4">
                 <Avatar className="h-20 w-20">
                   <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-                    ІП
+                    {initials}
                   </AvatarFallback>
                 </Avatar>
                 <div>
@@ -69,27 +176,45 @@ export default function SettingsPage() {
               <Separator />
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">Ім'я</Label>
-                  <Input id="firstName" defaultValue="Іван" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Прізвище</Label>
-                  <Input id="lastName" defaultValue="Петренко" />
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="fullName">ПІБ</Label>
+                  <Input 
+                    id="fullName" 
+                    value={profile.full_name}
+                    onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" defaultValue="admin@itway.edu.ua" />
+                  <Input 
+                    id="email" 
+                    type="email" 
+                    value={profile.email}
+                    disabled
+                    className="bg-muted"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Для зміни email зверніться до адміністратора
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="phone">Телефон</Label>
-                  <Input id="phone" defaultValue="+380501234567" />
+                  <Input 
+                    id="phone" 
+                    value={profile.phone}
+                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                    placeholder="+380501234567"
+                  />
                 </div>
               </div>
 
               <div className="flex justify-end">
-                <Button>
-                  <Save className="h-4 w-4 mr-2" />
+                <Button onClick={handleSaveProfile} disabled={saving}>
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
                   Зберегти зміни
                 </Button>
               </div>
@@ -159,18 +284,43 @@ export default function SettingsPage() {
             <CardContent className="space-y-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="currentPassword">Поточний пароль</Label>
-                  <Input id="currentPassword" type="password" />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="newPassword">Новий пароль</Label>
-                  <Input id="newPassword" type="password" />
+                  <div className="relative">
+                    <Input 
+                      id="newPassword" 
+                      type={showPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword">Підтвердіть пароль</Label>
-                  <Input id="confirmPassword" type="password" />
+                  <Input 
+                    id="confirmPassword" 
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
                 </div>
-                <Button variant="outline">Змінити пароль</Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handleChangePassword}
+                  disabled={savingPassword || !newPassword || !confirmPassword}
+                >
+                  {savingPassword && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Змінити пароль
+                </Button>
               </div>
 
               <Separator />

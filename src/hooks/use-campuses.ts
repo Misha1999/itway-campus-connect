@@ -9,6 +9,7 @@ export interface CampusWithStats {
   address: string | null;
   phone: string | null;
   email: string | null;
+  email_domain: string | null;
   is_active: boolean;
   created_at: string;
   studentsCount: number;
@@ -71,6 +72,7 @@ export function useCampuses() {
         address: campus.address,
         phone: campus.phone,
         email: campus.email,
+        email_domain: campus.email_domain,
         is_active: campus.is_active,
         created_at: campus.created_at,
         studentsCount,
@@ -89,6 +91,7 @@ export function useCampuses() {
     address?: string;
     phone?: string;
     email?: string;
+    email_domain?: string;
   }) => {
     const { error } = await supabase.from("campuses").insert({
       name: data.name,
@@ -96,6 +99,7 @@ export function useCampuses() {
       address: data.address || null,
       phone: data.phone || null,
       email: data.email || null,
+      email_domain: data.email_domain || null,
     });
 
     if (error) {

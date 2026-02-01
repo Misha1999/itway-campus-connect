@@ -231,12 +231,11 @@ export function UserProfileDialog({
 
           {/* Contact info */}
           <div className="space-y-3">
-            {user.email && !user.generated_login && (
-              <div className="flex items-center gap-3 text-sm">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <span>{user.email}</span>
-              </div>
-            )}
+            {/* Always show email */}
+            <div className="flex items-center gap-3 text-sm">
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              <span>{user.email || user.generated_login || "—"}</span>
+            </div>
             {user.phone && (
               <div className="flex items-center gap-3 text-sm">
                 <Phone className="h-4 w-4 text-muted-foreground" />

@@ -15,6 +15,7 @@ import LibraryPage from "./pages/Library";
 import CoinsPage from "./pages/Coins";
 import UsersPage from "./pages/Users";
 import CampusesPage from "./pages/Campuses";
+import CampusDetailPage from "./pages/CampusDetail";
 import NotificationsPage from "./pages/Notifications";
 import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
@@ -41,6 +42,7 @@ const App = () => (
             <Route path="/coins" element={<CoinsPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/campuses" element={<CampusesPage />} />
+            <Route path="/campuses/:id" element={<CampusDetailPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
