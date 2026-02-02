@@ -735,6 +735,177 @@ export type Database = {
           },
         ]
       }
+      material_access_rules: {
+        Row: {
+          access_type: string
+          created_at: string
+          created_by: string | null
+          id: string
+          material_id: string
+          target_id: string
+          visible_from: string | null
+          visible_until: string | null
+        }
+        Insert: {
+          access_type: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          material_id: string
+          target_id: string
+          visible_from?: string | null
+          visible_until?: string | null
+        }
+        Update: {
+          access_type?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          material_id?: string
+          target_id?: string
+          visible_from?: string | null
+          visible_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_access_rules_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_module_items: {
+        Row: {
+          id: string
+          material_id: string
+          module_id: string
+          order_index: number
+        }
+        Insert: {
+          id?: string
+          material_id: string
+          module_id: string
+          order_index?: number
+        }
+        Update: {
+          id?: string
+          material_id?: string
+          module_id?: string
+          order_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_module_items_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_module_items_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "material_modules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_modules: {
+        Row: {
+          campus_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          order_index: number
+        }
+        Insert: {
+          campus_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          order_index?: number
+        }
+        Update: {
+          campus_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          order_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_modules_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      materials: {
+        Row: {
+          campus_id: string | null
+          content_text: string | null
+          content_type: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          external_url: string | null
+          file_url: string | null
+          id: string
+          status: string
+          tags: string[] | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          campus_id?: string | null
+          content_text?: string | null
+          content_type?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          external_url?: string | null
+          file_url?: string | null
+          id?: string
+          status?: string
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string | null
+          content_text?: string | null
+          content_type?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          external_url?: string | null
+          file_url?: string | null
+          id?: string
+          status?: string
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "materials_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       modules: {
         Row: {
           course_id: string

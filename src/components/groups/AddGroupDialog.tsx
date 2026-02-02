@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
-import type { Campus, Course, CreateGroupData } from "@/hooks/use-groups";
+import { Loader2, AlertTriangle } from "lucide-react";
+import type { Campus, Course, CreateGroupData, StudyProgram, EnrollmentCohort } from "@/hooks/use-groups";
 import type { Database } from "@/integrations/supabase/types";
 
 type GroupFormat = Database["public"]["Enums"]["group_format"];
@@ -33,6 +34,8 @@ interface AddGroupDialogProps {
   onOpenChange: (open: boolean) => void;
   campuses: Campus[];
   courses: Course[];
+  studyPrograms: StudyProgram[];
+  enrollmentCohorts: EnrollmentCohort[];
   onSave: (data: CreateGroupData) => Promise<unknown>;
 }
 
@@ -41,6 +44,8 @@ export function AddGroupDialog({
   onOpenChange,
   campuses,
   courses,
+  studyPrograms,
+  enrollmentCohorts,
   onSave,
 }: AddGroupDialogProps) {
   const [loading, setLoading] = useState(false);
@@ -53,6 +58,24 @@ export function AddGroupDialog({
   const [maxStudents, setMaxStudents] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [studyProgramId, setStudyProgramId] = useState("");
+  const [enrollmentCohortId, setEnrollmentCohortId] = useState("");
+
+  // Filter programs and cohorts by selected campus
+  const filteredPrograms = useMemo(() => 
+    studyPrograms.filter(p => p.campus_id === campusId && p.is_active),
+    [studyPrograms, campusId]
+  );
+
+  const filteredCohorts = useMemo(() => 
+    enrollmentCohorts.filter(c => c.campus_id === campusId && c.is_active),
+    [enrollmentCohorts, campusId]
+  );
+
+  // Validation
+  const isValid = name.trim() && campusId && studyProgramId && enrollmentCohortId;
+  const hasNoPrograms = campusId && filteredPrograms.length === 0;
+  const hasNoCohorts = campusId && filteredCohorts.length === 0;
 
   useEffect(() => {
     if (open) {
@@ -65,11 +88,19 @@ export function AddGroupDialog({
       setMaxStudents("");
       setStartDate("");
       setEndDate("");
+      setStudyProgramId("");
+      setEnrollmentCohortId("");
     }
   }, [open, campuses]);
 
+  // Reset program/cohort when campus changes
+  useEffect(() => {
+    setStudyProgramId("");
+    setEnrollmentCohortId("");
+  }, [campusId]);
+
   const handleSubmit = async () => {
-    if (!name.trim() || !campusId) {
+    if (!isValid) {
       return;
     }
 
@@ -86,6 +117,8 @@ export function AddGroupDialog({
         max_students: maxStudents ? parseInt(maxStudents, 10) : null,
         start_date: startDate || null,
         end_date: endDate || null,
+        study_program_id: studyProgramId,
+        enrollment_cohort_id: enrollmentCohortId,
       });
       onOpenChange(false);
     } finally {
@@ -98,20 +131,10 @@ export function AddGroupDialog({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Нова група</DialogTitle>
+          <DialogDescription>Заповніть обов'язкові поля для створення групи</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Name */}
-          <div className="space-y-2">
-            <Label htmlFor="name">Назва групи *</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="PY-2024-A"
-            />
-          </div>
-
           {/* Campus */}
           <div className="space-y-2">
             <Label>Кампус *</Label>
@@ -127,6 +150,65 @@ export function AddGroupDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Study Program - REQUIRED */}
+          <div className="space-y-2">
+            <Label>Програма навчання *</Label>
+            {hasNoPrograms ? (
+              <div className="flex items-center gap-2 text-sm text-destructive p-2 rounded bg-destructive/10">
+                <AlertTriangle className="h-4 w-4" />
+                <span>Для цього закладу немає програм навчання. Створіть їх у налаштуваннях закладу.</span>
+              </div>
+            ) : (
+              <Select value={studyProgramId} onValueChange={setStudyProgramId} disabled={!campusId}>
+                <SelectTrigger className={!studyProgramId && campusId ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Оберіть програму" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredPrograms.map((program) => (
+                    <SelectItem key={program.id} value={program.id}>
+                      {program.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Enrollment Cohort - REQUIRED */}
+          <div className="space-y-2">
+            <Label>Потік набору *</Label>
+            {hasNoCohorts ? (
+              <div className="flex items-center gap-2 text-sm text-destructive p-2 rounded bg-destructive/10">
+                <AlertTriangle className="h-4 w-4" />
+                <span>Для цього закладу немає потоків. Створіть їх у налаштуваннях закладу.</span>
+              </div>
+            ) : (
+              <Select value={enrollmentCohortId} onValueChange={setEnrollmentCohortId} disabled={!campusId}>
+                <SelectTrigger className={!enrollmentCohortId && campusId ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Оберіть потік" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredCohorts.map((cohort) => (
+                    <SelectItem key={cohort.id} value={cohort.id}>
+                      {cohort.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Name */}
+          <div className="space-y-2">
+            <Label htmlFor="name">Назва групи *</Label>
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="PY-2024-A"
+            />
           </div>
 
           {/* Course */}
@@ -225,7 +307,7 @@ export function AddGroupDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Скасувати
           </Button>
-          <Button onClick={handleSubmit} disabled={loading || !name.trim() || !campusId}>
+          <Button onClick={handleSubmit} disabled={loading || !isValid}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Створити
           </Button>
