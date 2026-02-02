@@ -6,14 +6,17 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { uk } from "date-fns/locale";
-import { Mail, Phone, Calendar, Building2, Users, GraduationCap, Clock, Copy, Check, Eye, EyeOff, Key } from "lucide-react";
+import { Mail, Phone, Calendar, Building2, Users, GraduationCap, Clock, Copy, Check, Eye, EyeOff, Key, Shield, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { UserWithRole } from "@/hooks/use-users";
@@ -29,10 +32,13 @@ const roleLabels: Record<AppRole, string> = {
   parent_viewer: "Батьки",
 };
 
+const allRoles: AppRole[] = ["admin_network", "admin_campus", "teacher", "student", "parent_viewer"];
+
 interface UserProfileDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user: UserWithRole | null;
+  onRolesUpdated?: () => void;
 }
 
 interface StudyInfo {
@@ -44,11 +50,18 @@ export function UserProfileDialog({
   open,
   onOpenChange,
   user,
+  onRolesUpdated,
 }: UserProfileDialogProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [copiedLogin, setCopiedLogin] = useState(false);
   const [copiedPassword, setCopiedPassword] = useState(false);
   const [studyInfo, setStudyInfo] = useState<StudyInfo>({ programName: null, cohortName: null });
+  const [activeTab, setActiveTab] = useState("profile");
+  
+  // Roles management
+  const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
+  const [savingRoles, setSavingRoles] = useState(false);
+  const [rolesChanged, setRolesChanged] = useState(false);
 
   useEffect(() => {
     async function fetchStudyInfo() {
@@ -83,8 +96,68 @@ export function UserProfileDialog({
 
     if (open && user) {
       fetchStudyInfo();
+      setSelectedRoles([...user.roles]);
+      setRolesChanged(false);
+      setActiveTab("profile");
     }
-  }, [open, user?.study_program_id, user?.enrollment_cohort_id]);
+  }, [open, user]);
+
+  useEffect(() => {
+    if (user) {
+      const hasChanged = 
+        selectedRoles.length !== user.roles.length ||
+        selectedRoles.some(r => !user.roles.includes(r)) ||
+        user.roles.some(r => !selectedRoles.includes(r));
+      setRolesChanged(hasChanged);
+    }
+  }, [selectedRoles, user]);
+
+  const handleRoleToggle = (role: AppRole) => {
+    setSelectedRoles(prev => 
+      prev.includes(role) 
+        ? prev.filter(r => r !== role)
+        : [...prev, role]
+    );
+  };
+
+  const handleSaveRoles = async () => {
+    if (!user || selectedRoles.length === 0) {
+      toast.error("Користувач повинен мати хоча б одну роль");
+      return;
+    }
+
+    setSavingRoles(true);
+    try {
+      // Delete existing roles
+      const { error: deleteError } = await supabase
+        .from("user_roles")
+        .delete()
+        .eq("user_id", user.user_id);
+
+      if (deleteError) throw deleteError;
+
+      // Insert new roles
+      const { error: insertError } = await supabase
+        .from("user_roles")
+        .insert(
+          selectedRoles.map(role => ({
+            user_id: user.user_id,
+            role,
+          }))
+        );
+
+      if (insertError) throw insertError;
+
+      toast.success("Ролі оновлено");
+      onRolesUpdated?.();
+      setRolesChanged(false);
+    } catch (error) {
+      console.error("Error updating roles:", error);
+      toast.error("Помилка оновлення ролей");
+    } finally {
+      setSavingRoles(false);
+    }
+  };
 
   if (!user) return null;
 
@@ -113,200 +186,261 @@ export function UserProfileDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Профіль користувача</DialogTitle>
-          <DialogDescription>Детальна інформація про користувача</DialogDescription>
+          <DialogDescription>Детальна інформація та налаштування</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {/* Header with avatar */}
-          <div className="flex items-center gap-4">
-            <Avatar className="h-16 w-16">
-              <AvatarFallback className="bg-primary/10 text-primary text-xl">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">
-                {user.full_name}
-              </h3>
-              <div className="flex flex-wrap gap-1 mt-1">
-                {user.roles.map((role) => (
-                  <Badge key={role} variant="outline">
-                    {roleLabels[role]}
-                  </Badge>
-                ))}
-              </div>
+        {/* Header with avatar */}
+        <div className="flex items-center gap-4 py-2">
+          <Avatar className="h-16 w-16">
+            <AvatarFallback className="bg-primary/10 text-primary text-xl">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">
+              {user.full_name}
+            </h3>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {user.roles.map((role) => (
+                <Badge key={role} variant="outline">
+                  {roleLabels[role]}
+                </Badge>
+              ))}
             </div>
           </div>
+        </div>
 
-          <Separator />
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="profile">Профіль</TabsTrigger>
+            <TabsTrigger value="credentials">
+              <Key className="h-4 w-4 mr-1" />
+              Доступ
+            </TabsTrigger>
+            <TabsTrigger value="roles">
+              <Shield className="h-4 w-4 mr-1" />
+              Ролі
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Student credentials */}
-          {isStudent && user.generated_login && (
-            <>
-              <div className="space-y-3 p-4 rounded-lg bg-accent/50">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Key className="h-4 w-4 text-muted-foreground" />
-                  Облікові дані
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Логін:</span>
-                    <div className="flex items-center gap-2">
-                      <code className="text-sm bg-background px-2 py-1 rounded">
-                        {user.generated_login}
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => copyToClipboard(user.generated_login!, 'login')}
-                      >
-                        {copiedLogin ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                      </Button>
+          {/* Profile Tab */}
+          <TabsContent value="profile" className="space-y-4 mt-4">
+            {/* Study info for students */}
+            {isStudent && (studyInfo.programName || studyInfo.cohortName) && (
+              <>
+                <div className="space-y-3 p-3 rounded-lg bg-accent/50">
+                  <div className="text-sm font-medium">Навчання</div>
+                  {studyInfo.programName && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <span className="text-muted-foreground">Програма: </span>
+                        <span className="font-medium">{studyInfo.programName}</span>
+                      </div>
                     </div>
-                  </div>
-
-                  {decodedPassword && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Пароль:</span>
-                      <div className="flex items-center gap-2">
-                        <code className="text-sm bg-background px-2 py-1 rounded">
-                          {showPassword ? decodedPassword : "••••••••••"}
-                        </code>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => copyToClipboard(decodedPassword, 'password')}
-                        >
-                          {copiedPassword ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                        </Button>
+                  )}
+                  {studyInfo.cohortName && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <span className="text-muted-foreground">Потік: </span>
+                        <span className="font-medium">{studyInfo.cohortName}</span>
                       </div>
                     </div>
                   )}
                 </div>
-              </div>
-              <Separator />
-            </>
-          )}
+              </>
+            )}
 
-          {/* Study info for students */}
-          {isStudent && (studyInfo.programName || studyInfo.cohortName) && (
-            <>
-              <div className="space-y-3">
-                {studyInfo.programName && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <span className="text-muted-foreground">Програма: </span>
-                      <span className="font-medium">{studyInfo.programName}</span>
-                    </div>
-                  </div>
-                )}
-                {studyInfo.cohortName && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <span className="text-muted-foreground">Потік: </span>
-                      <span className="font-medium">{studyInfo.cohortName}</span>
-                    </div>
-                  </div>
-                )}
+            {/* Contact info */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                <span>{user.email || user.generated_login || "—"}</span>
               </div>
-              <Separator />
-            </>
-          )}
-
-          {/* Contact info */}
-          <div className="space-y-3">
-            {/* Always show email */}
-            <div className="flex items-center gap-3 text-sm">
-              <Mail className="h-4 w-4 text-muted-foreground" />
-              <span>{user.email || user.generated_login || "—"}</span>
+              {user.phone && (
+                <div className="flex items-center gap-3 text-sm">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <span>{user.phone}</span>
+                </div>
+              )}
+              {user.birth_date && (
+                <div className="flex items-center gap-3 text-sm">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span>
+                    {format(new Date(user.birth_date), "d MMMM yyyy", {
+                      locale: uk,
+                    })}
+                  </span>
+                </div>
+              )}
             </div>
-            {user.phone && (
-              <div className="flex items-center gap-3 text-sm">
-                <Phone className="h-4 w-4 text-muted-foreground" />
-                <span>{user.phone}</span>
-              </div>
+
+            {/* Campuses */}
+            {user.campuses.length > 0 && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    Заклади
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {user.campuses.map((campus) => (
+                      <Badge key={campus.id} variant="secondary">
+                        {campus.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
-            {user.birth_date && (
-              <div className="flex items-center gap-3 text-sm">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>
-                  {format(new Date(user.birth_date), "d MMMM yyyy", {
-                    locale: uk,
-                  })}
-                </span>
-              </div>
+
+            {/* Groups */}
+            {user.groups.length > 0 && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    Групи
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {user.groups.map((group) => (
+                      <Badge key={group.id} variant="secondary">
+                        {group.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
-          </div>
 
-          {/* Campuses */}
-          {user.campuses.length > 0 && (
-            <>
-              <Separator />
+            {/* Status & dates */}
+            <Separator />
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Статус</span>
+              <StatusBadge status={user.status} />
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Створено</span>
+              <span>
+                {format(new Date(user.created_at), "d MMM yyyy", { locale: uk })}
+              </span>
+            </div>
+          </TabsContent>
+
+          {/* Credentials Tab */}
+          <TabsContent value="credentials" className="space-y-4 mt-4">
+            <div className="space-y-4">
+              {/* Login */}
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                  Заклади
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {user.campuses.map((campus) => (
-                    <Badge key={campus.id} variant="secondary">
-                      {campus.name}
-                    </Badge>
-                  ))}
+                <Label>Логін (Email)</Label>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-accent/50">
+                  <code className="text-sm">
+                    {user.generated_login || user.email || "—"}
+                  </code>
+                  {(user.generated_login || user.email) && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => copyToClipboard(user.generated_login || user.email, 'login')}
+                    >
+                      {copiedLogin ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    </Button>
+                  )}
                 </div>
               </div>
-            </>
-          )}
 
-          {/* Groups */}
-          {user.groups.length > 0 && (
-            <>
+              {/* Password (only for students with generated password) */}
+              {decodedPassword && (
+                <div className="space-y-2">
+                  <Label>Тимчасовий пароль</Label>
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-accent/50">
+                    <code className="text-sm">
+                      {showPassword ? decodedPassword : "••••••••••"}
+                    </code>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => copyToClipboard(decodedPassword, 'password')}
+                      >
+                        {copiedPassword ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Цей пароль згенеровано при створенні акаунту. Рекомендуємо змінити його.
+                  </p>
+                </div>
+              )}
+
               <Separator />
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  Групи
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {user.groups.map((group) => (
-                    <Badge key={group.id} variant="secondary">
-                      {group.name}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
 
-          {/* Status & dates */}
-          <Separator />
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Статус</span>
-            <StatusBadge status={user.status} />
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Створено</span>
-            <span>
-              {format(new Date(user.created_at), "d MMM yyyy", { locale: uk })}
-            </span>
-          </div>
-        </div>
+              <p className="text-sm text-muted-foreground">
+                Для зміни email або пароля використовуйте кнопку "Змінити облікові дані" в меню користувача.
+              </p>
+            </div>
+          </TabsContent>
+
+          {/* Roles Tab */}
+          <TabsContent value="roles" className="space-y-4 mt-4">
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Користувач може мати кілька ролей одночасно. Оберіть необхідні ролі.
+              </p>
+
+              <div className="space-y-3">
+                {allRoles.map((role) => (
+                  <div key={role} className="flex items-center space-x-3">
+                    <Checkbox
+                      id={`role-${role}`}
+                      checked={selectedRoles.includes(role)}
+                      onCheckedChange={() => handleRoleToggle(role)}
+                    />
+                    <Label 
+                      htmlFor={`role-${role}`} 
+                      className="flex-1 cursor-pointer"
+                    >
+                      <span className="font-medium">{roleLabels[role]}</span>
+                    </Label>
+                  </div>
+                ))}
+              </div>
+
+              {selectedRoles.length === 0 && (
+                <p className="text-sm text-destructive">
+                  Користувач повинен мати хоча б одну роль
+                </p>
+              )}
+
+              {rolesChanged && (
+                <Button 
+                  onClick={handleSaveRoles} 
+                  disabled={savingRoles || selectedRoles.length === 0}
+                  className="w-full"
+                >
+                  {savingRoles && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Зберегти ролі
+                </Button>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

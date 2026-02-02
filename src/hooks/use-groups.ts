@@ -23,18 +23,37 @@ export interface GroupData {
   student_count: number;
   teacher_name?: string;
   created_at: string;
+  study_program_id: string | null;
+  study_program_name?: string;
+  enrollment_cohort_id: string | null;
+  enrollment_cohort_name?: string;
 }
 
 export interface Campus {
   id: string;
   name: string;
   city: string;
+  email_domain: string | null;
 }
 
 export interface Course {
   id: string;
   name: string;
   direction_id: string | null;
+}
+
+export interface StudyProgram {
+  id: string;
+  name: string;
+  campus_id: string;
+  is_active: boolean;
+}
+
+export interface EnrollmentCohort {
+  id: string;
+  name: string;
+  campus_id: string;
+  is_active: boolean;
 }
 
 export interface CreateGroupData {
@@ -47,18 +66,22 @@ export interface CreateGroupData {
   max_students?: number | null;
   start_date?: string | null;
   end_date?: string | null;
+  study_program_id: string;
+  enrollment_cohort_id: string;
 }
 
-export function useGroups() {
+export function useGroups(campusIdFilter?: string) {
   const [groups, setGroups] = useState<GroupData[]>([]);
   const [campuses, setCampuses] = useState<Campus[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [studyPrograms, setStudyPrograms] = useState<StudyProgram[]>([]);
+  const [enrollmentCohorts, setEnrollmentCohorts] = useState<EnrollmentCohort[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchCampuses = useCallback(async () => {
     const { data, error } = await supabase
       .from("campuses")
-      .select("id, name, city")
+      .select("id, name, city, email_domain")
       .eq("is_active", true)
       .order("name");
 
@@ -68,6 +91,42 @@ export function useGroups() {
     }
     setCampuses(data || []);
   }, []);
+
+  const fetchStudyPrograms = useCallback(async () => {
+    let query = supabase
+      .from("study_programs")
+      .select("id, name, campus_id, is_active")
+      .order("name");
+
+    if (campusIdFilter) {
+      query = query.eq("campus_id", campusIdFilter);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error("Error fetching study programs:", error);
+      return;
+    }
+    setStudyPrograms(data || []);
+  }, [campusIdFilter]);
+
+  const fetchEnrollmentCohorts = useCallback(async () => {
+    let query = supabase
+      .from("enrollment_cohorts")
+      .select("id, name, campus_id, is_active")
+      .order("name");
+
+    if (campusIdFilter) {
+      query = query.eq("campus_id", campusIdFilter);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error("Error fetching enrollment cohorts:", error);
+      return;
+    }
+    setEnrollmentCohorts(data || []);
+  }, [campusIdFilter]);
 
   const fetchCourses = useCallback(async () => {
     const { data, error } = await supabase
@@ -86,7 +145,7 @@ export function useGroups() {
   const fetchGroups = useCallback(async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("groups")
       .select(`
         id,
@@ -102,10 +161,20 @@ export function useGroups() {
         end_date,
         schedule_template,
         created_at,
+        study_program_id,
+        enrollment_cohort_id,
         campuses:campus_id (name),
-        courses:course_id (name)
+        courses:course_id (name),
+        study_programs:study_program_id (name, is_active),
+        enrollment_cohorts:enrollment_cohort_id (name, is_active)
       `)
       .order("name");
+
+    if (campusIdFilter) {
+      query = query.eq("campus_id", campusIdFilter);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Error fetching groups:", error);
@@ -166,29 +235,38 @@ export function useGroups() {
       }
     }
 
-    const formattedGroups: GroupData[] = (data || []).map((g) => ({
-      id: g.id,
-      name: g.name,
-      campus_id: g.campus_id,
-      campus_name: (g.campuses as { name: string } | null)?.name,
-      course_id: g.course_id,
-      course_name: (g.courses as { name: string } | null)?.name,
-      format: g.format,
-      is_active: g.is_active,
-      level: g.level,
-      age_range: g.age_range,
-      max_students: g.max_students,
-      start_date: g.start_date,
-      end_date: g.end_date,
-      schedule_template: g.schedule_template,
-      student_count: studentCounts[g.id] || 0,
-      teacher_name: teacherNames[g.id],
-      created_at: g.created_at,
-    }));
+    const formattedGroups: GroupData[] = (data || []).map((g) => {
+      const studyProgramData = g.study_programs as { name: string; is_active: boolean } | null;
+      const enrollmentCohortData = g.enrollment_cohorts as { name: string; is_active: boolean } | null;
+      
+      return {
+        id: g.id,
+        name: g.name,
+        campus_id: g.campus_id,
+        campus_name: (g.campuses as { name: string } | null)?.name,
+        course_id: g.course_id,
+        course_name: (g.courses as { name: string } | null)?.name,
+        format: g.format,
+        is_active: g.is_active,
+        level: g.level,
+        age_range: g.age_range,
+        max_students: g.max_students,
+        start_date: g.start_date,
+        end_date: g.end_date,
+        schedule_template: g.schedule_template,
+        student_count: studentCounts[g.id] || 0,
+        teacher_name: teacherNames[g.id],
+        created_at: g.created_at,
+        study_program_id: g.study_program_id,
+        study_program_name: studyProgramData ? (studyProgramData.name + (!studyProgramData.is_active ? " (архів)" : "")) : undefined,
+        enrollment_cohort_id: g.enrollment_cohort_id,
+        enrollment_cohort_name: enrollmentCohortData ? (enrollmentCohortData.name + (!enrollmentCohortData.is_active ? " (архів)" : "")) : undefined,
+      };
+    });
 
     setGroups(formattedGroups);
     setLoading(false);
-  }, []);
+  }, [campusIdFilter]);
 
   const createGroup = async (groupData: CreateGroupData) => {
     const { data, error } = await supabase
@@ -203,6 +281,8 @@ export function useGroups() {
         max_students: groupData.max_students || null,
         start_date: groupData.start_date || null,
         end_date: groupData.end_date || null,
+        study_program_id: groupData.study_program_id,
+        enrollment_cohort_id: groupData.enrollment_cohort_id,
         is_active: true,
       })
       .select()
@@ -220,19 +300,23 @@ export function useGroups() {
   };
 
   const updateGroup = async (id: string, groupData: Partial<CreateGroupData>) => {
+    const updateData: Record<string, unknown> = {};
+    
+    if (groupData.name !== undefined) updateData.name = groupData.name;
+    if (groupData.campus_id !== undefined) updateData.campus_id = groupData.campus_id;
+    if (groupData.course_id !== undefined) updateData.course_id = groupData.course_id;
+    if (groupData.format !== undefined) updateData.format = groupData.format;
+    if (groupData.level !== undefined) updateData.level = groupData.level;
+    if (groupData.age_range !== undefined) updateData.age_range = groupData.age_range;
+    if (groupData.max_students !== undefined) updateData.max_students = groupData.max_students;
+    if (groupData.start_date !== undefined) updateData.start_date = groupData.start_date;
+    if (groupData.end_date !== undefined) updateData.end_date = groupData.end_date;
+    if (groupData.study_program_id !== undefined) updateData.study_program_id = groupData.study_program_id;
+    if (groupData.enrollment_cohort_id !== undefined) updateData.enrollment_cohort_id = groupData.enrollment_cohort_id;
+
     const { error } = await supabase
       .from("groups")
-      .update({
-        name: groupData.name,
-        campus_id: groupData.campus_id,
-        course_id: groupData.course_id,
-        format: groupData.format,
-        level: groupData.level,
-        age_range: groupData.age_range,
-        max_students: groupData.max_students,
-        start_date: groupData.start_date,
-        end_date: groupData.end_date,
-      })
+      .update(updateData)
       .eq("id", id);
 
     if (error) {
@@ -284,12 +368,16 @@ export function useGroups() {
     fetchGroups();
     fetchCampuses();
     fetchCourses();
-  }, [fetchGroups, fetchCampuses, fetchCourses]);
+    fetchStudyPrograms();
+    fetchEnrollmentCohorts();
+  }, [fetchGroups, fetchCampuses, fetchCourses, fetchStudyPrograms, fetchEnrollmentCohorts]);
 
   return {
     groups,
     campuses,
     courses,
+    studyPrograms,
+    enrollmentCohorts,
     loading,
     fetchGroups,
     createGroup,

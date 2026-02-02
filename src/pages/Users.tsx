@@ -426,6 +426,7 @@ export default function UsersPage() {
         open={profileDialog.open}
         onOpenChange={(open) => setProfileDialog({ ...profileDialog, open })}
         user={profileDialog.user}
+        onRolesUpdated={refetch}
       />
 
       <EditUserDialog
