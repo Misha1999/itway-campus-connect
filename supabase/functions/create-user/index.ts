@@ -16,6 +16,7 @@ interface CreateUserRequest {
   campus_id?: string;
   study_program_id?: string;
   enrollment_cohort_id?: string;
+  group_id?: string;
   generate_credentials?: boolean;
 }
 
@@ -117,9 +118,8 @@ serve(async (req) => {
       });
     }
 
-    // Parse request body
     const body: CreateUserRequest = await req.json();
-    let { email, password, full_name, phone, birth_date, role, campus_id, study_program_id, enrollment_cohort_id, generate_credentials } = body;
+    let { email, password, full_name, phone, birth_date, role, campus_id, study_program_id, enrollment_cohort_id, group_id, generate_credentials } = body;
 
     // Generate credentials for students if requested
     let generatedLogin: string | null = null;
@@ -240,6 +240,21 @@ serve(async (req) => {
 
       if (campusError) {
         console.error("Error adding campus membership:", campusError);
+      }
+    }
+
+    // If group_id is provided (for students), add group membership
+    if (group_id && role === 'student') {
+      const { error: groupError } = await supabaseAdmin
+        .from("group_memberships")
+        .insert({
+          user_id: newUser.user.id,
+          group_id,
+          role: 'student',
+        });
+
+      if (groupError) {
+        console.error("Error adding group membership:", groupError);
       }
     }
 
