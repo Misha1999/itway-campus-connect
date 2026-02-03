@@ -128,21 +128,23 @@ serve(async (req) => {
     if (role === 'student' && generate_credentials) {
       // Get campus domain if available
       let campusDomain: string | undefined;
-      if (campus_id) {
-        const { data: campus } = await supabaseAdmin
-          .from("campuses")
-          .select("email")
-          .eq("id", campus_id)
-          .single();
-        
-        if (campus?.email) {
-          // Extract domain from campus email
-          const emailParts = campus.email.split('@');
-          if (emailParts.length > 1) {
-            campusDomain = emailParts[1];
-          }
+    if (campus_id) {
+      const { data: campus } = await supabaseAdmin
+        .from("campuses")
+        .select("email_domain, email")
+        .eq("id", campus_id)
+        .single();
+      
+      // Prefer email_domain field, fallback to extracting from email
+      if (campus?.email_domain) {
+        campusDomain = campus.email_domain;
+      } else if (campus?.email) {
+        const emailParts = campus.email.split('@');
+        if (emailParts.length > 1) {
+          campusDomain = emailParts[1];
         }
       }
+    }
 
       generatedLogin = generateLogin(full_name, campusDomain);
       generatedPassword = generatePassword();

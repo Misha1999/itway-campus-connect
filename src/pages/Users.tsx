@@ -345,15 +345,16 @@ export default function UsersPage() {
         </TabsList>
         <TabsContent value="all" className="mt-6">
           {filteredUsers.length > 0 ? (
-            <DataTable
-              columns={columns}
-              data={filteredUsers}
-              selectable
-              selectedRows={selectedRows}
-              onSelectRow={handleSelectRow}
-              onSelectAll={handleSelectAll}
-              getRowId={(row) => row.id}
-            />
+          <DataTable
+            columns={columns}
+            data={filteredUsers}
+            selectable
+            selectedRows={selectedRows}
+            onSelectRow={handleSelectRow}
+            onSelectAll={handleSelectAll}
+            onRowClick={(user) => setProfileDialog({ open: true, user })}
+            getRowId={(row) => row.id}
+          />
           ) : (
             <EmptyState
               icon={Users}
@@ -368,15 +369,16 @@ export default function UsersPage() {
         </TabsContent>
         <TabsContent value="teachers" className="mt-6">
           {teachers.length > 0 ? (
-            <DataTable
-              columns={columns}
-              data={teachers}
-              selectable
-              selectedRows={selectedRows}
-              onSelectRow={handleSelectRow}
-              onSelectAll={handleSelectAll}
-              getRowId={(row) => row.id}
-            />
+          <DataTable
+            columns={columns}
+            data={teachers}
+            selectable
+            selectedRows={selectedRows}
+            onSelectRow={handleSelectRow}
+            onSelectAll={handleSelectAll}
+            onRowClick={(user) => setProfileDialog({ open: true, user })}
+            getRowId={(row) => row.id}
+          />
           ) : (
             <EmptyState
               icon={Users}
@@ -391,15 +393,16 @@ export default function UsersPage() {
         </TabsContent>
         <TabsContent value="students" className="mt-6">
           {students.length > 0 ? (
-            <DataTable
-              columns={columns}
-              data={students}
-              selectable
-              selectedRows={selectedRows}
-              onSelectRow={handleSelectRow}
-              onSelectAll={handleSelectAll}
-              getRowId={(row) => row.id}
-            />
+          <DataTable
+            columns={columns}
+            data={students}
+            selectable
+            selectedRows={selectedRows}
+            onSelectRow={handleSelectRow}
+            onSelectAll={handleSelectAll}
+            onRowClick={(user) => setProfileDialog({ open: true, user })}
+            getRowId={(row) => row.id}
+          />
           ) : (
             <EmptyState
               icon={Users}
