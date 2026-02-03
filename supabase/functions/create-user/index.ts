@@ -52,11 +52,9 @@ function generateLogin(fullName: string, campusDomain?: string): string {
   const randomNum = Math.floor(Math.random() * 900) + 100;
   login = `${login}${randomNum}`;
 
-  if (campusDomain) {
-    return `${login}@${campusDomain}`;
-  }
-  
-  return login;
+  // Always use a valid email domain - fallback to 'student.local' if no campus domain
+  const domain = campusDomain || 'student.local';
+  return `${login}@${domain}`;
 }
 
 function generatePassword(): string {
