@@ -103,20 +103,22 @@ serve(async (req) => {
       });
     }
 
-    // Check if requesting user is an admin
-    const { data: adminRole } = await supabaseAdmin
+    // Check if requesting user is an admin - use limit(1) since user might have multiple admin roles
+    const { data: adminRoles } = await supabaseAdmin
       .from("user_roles")
       .select("role")
       .eq("user_id", requestingUser.id)
       .in("role", ["admin_network", "admin_campus"])
-      .maybeSingle();
+      .limit(1);
 
-    if (!adminRole) {
+    if (!adminRoles || adminRoles.length === 0) {
       return new Response(JSON.stringify({ error: "Unauthorized: Admin access required" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const adminRole = adminRoles[0];
 
     const body: CreateUserRequest = await req.json();
     let { email, password, full_name, phone, birth_date, role, campus_id, study_program_id, enrollment_cohort_id, group_id, generate_credentials } = body;
