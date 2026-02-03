@@ -74,6 +74,8 @@ export function AddUserDialog({
   const [campusId, setCampusId] = useState("");
   const [studyProgramId, setStudyProgramId] = useState("");
   const [enrollmentCohortId, setEnrollmentCohortId] = useState("");
+  const [groupId, setGroupId] = useState("");
+  const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
 
   const { studyPrograms, enrollmentCohorts } = useStudyData(campusId || undefined);
 
@@ -82,6 +84,33 @@ export function AddUserDialog({
   // Filter study programs and cohorts by selected campus
   const filteredPrograms = studyPrograms.filter(p => !campusId || p.campus_id === campusId);
   const filteredCohorts = enrollmentCohorts.filter(c => !campusId || c.campus_id === campusId);
+
+  // Fetch groups when study program and enrollment cohort are selected
+  useEffect(() => {
+    const fetchGroups = async () => {
+      if (!studyProgramId || !enrollmentCohortId) {
+        setGroups([]);
+        setGroupId("");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("groups")
+        .select("id, name")
+        .eq("study_program_id", studyProgramId)
+        .eq("enrollment_cohort_id", enrollmentCohortId)
+        .eq("is_active", true)
+        .order("name");
+
+      if (!error && data) {
+        setGroups(data);
+      } else {
+        setGroups([]);
+      }
+    };
+
+    fetchGroups();
+  }, [studyProgramId, enrollmentCohortId]);
 
   const resetForm = () => {
     setEmail("");
@@ -93,6 +122,8 @@ export function AddUserDialog({
     setCampusId("");
     setStudyProgramId("");
     setEnrollmentCohortId("");
+    setGroupId("");
+    setGroups([]);
     setGeneratedCredentials(null);
   };
 
@@ -153,6 +184,7 @@ export function AddUserDialog({
           campus_id: campusId || undefined,
           study_program_id: isStudent ? studyProgramId || undefined : undefined,
           enrollment_cohort_id: isStudent ? enrollmentCohortId || undefined : undefined,
+          group_id: isStudent ? groupId || undefined : undefined,
           generate_credentials: isStudent,
         },
       });
@@ -322,7 +354,10 @@ export function AddUserDialog({
                     <Label>Програма навчання</Label>
                     <Select 
                       value={studyProgramId || "__none__"} 
-                      onValueChange={(v) => setStudyProgramId(v === "__none__" ? "" : v)}
+                      onValueChange={(v) => {
+                        setStudyProgramId(v === "__none__" ? "" : v);
+                        setGroupId("");
+                      }}
                       disabled={!campusId}
                     >
                       <SelectTrigger>
@@ -344,7 +379,10 @@ export function AddUserDialog({
                     <Label>Потік набору</Label>
                     <Select 
                       value={enrollmentCohortId || "__none__"} 
-                      onValueChange={(v) => setEnrollmentCohortId(v === "__none__" ? "" : v)}
+                      onValueChange={(v) => {
+                        setEnrollmentCohortId(v === "__none__" ? "" : v);
+                        setGroupId("");
+                      }}
                       disabled={!campusId}
                     >
                       <SelectTrigger>
@@ -360,6 +398,35 @@ export function AddUserDialog({
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Group - shown when program and cohort are selected */}
+                  {studyProgramId && enrollmentCohortId && (
+                    <div className="space-y-2">
+                      <Label>Група</Label>
+                      <Select 
+                        value={groupId || "__none__"} 
+                        onValueChange={(v) => setGroupId(v === "__none__" ? "" : v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Оберіть групу" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Без групи</SelectItem>
+                          {groups.length === 0 ? (
+                            <SelectItem value="__no_groups__" disabled>
+                              Немає груп для обраних параметрів
+                            </SelectItem>
+                          ) : (
+                            groups.map((group) => (
+                              <SelectItem key={group.id} value={group.id}>
+                                {group.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   <p className="text-sm text-muted-foreground bg-accent/50 p-3 rounded-md">
                     Логін та пароль будуть згенеровані автоматично на основі ПІБ та домену закладу.
