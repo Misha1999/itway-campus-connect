@@ -206,7 +206,11 @@ export default function CampusesPage() {
       </div>
 
       {/* Table */}
-      <DataTable columns={columnsWithActions} data={campuses} />
+      <DataTable 
+        columns={columnsWithActions} 
+        data={campuses} 
+        onRowClick={(campus) => navigate(`/campuses/${campus.id}`)}
+      />
 
       <AddCampusDialog
         open={addDialogOpen}

@@ -24,6 +24,7 @@ interface DataTableProps<T> {
   selectedRows?: Set<string>;
   onSelectRow?: (id: string) => void;
   onSelectAll?: () => void;
+  onRowClick?: (row: T) => void;
   getRowId?: (row: T) => string;
   emptyMessage?: string;
   className?: string;
@@ -36,6 +37,7 @@ export function DataTable<T>({
   selectedRows,
   onSelectRow,
   onSelectAll,
+  onRowClick,
   getRowId = (row: T) => (row as { id: string }).id,
   emptyMessage = "Немає даних",
   className,
@@ -77,10 +79,14 @@ export function DataTable<T>({
               const rowId = getRowId(row);
               const isSelected = selectedRows?.has(rowId);
               return (
-                <TableRow 
-                  key={rowId}
-                  className={cn(isSelected && "bg-accent/50")}
-                >
+              <TableRow 
+                key={rowId}
+                className={cn(
+                  isSelected && "bg-accent/50",
+                  onRowClick && "cursor-pointer hover:bg-muted/50"
+                )}
+                onClick={() => onRowClick?.(row)}
+              >
                   {selectable && (
                     <TableCell>
                       <Checkbox
