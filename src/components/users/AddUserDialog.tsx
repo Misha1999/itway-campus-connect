@@ -20,7 +20,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, Loader2, Eye, EyeOff, Copy, Check } from "lucide-react";
+import { CalendarIcon, Loader2, Eye, EyeOff, Copy, Check, Plus, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useStudyData } from "@/hooks/use-study-data";
@@ -68,7 +68,7 @@ export function AddUserDialog({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phones, setPhones] = useState<string[]>([""]);
   const [birthDate, setBirthDate] = useState<Date | undefined>();
   const [role, setRole] = useState<AppRole>("student");
   const [campusId, setCampusId] = useState("");
@@ -116,7 +116,7 @@ export function AddUserDialog({
     setEmail("");
     setPassword("");
     setFullName("");
-    setPhone("");
+    setPhones([""]);
     setBirthDate(undefined);
     setRole("student");
     setCampusId("");
@@ -173,12 +173,15 @@ export function AddUserDialog({
         return;
       }
 
+      // Save phones as semicolon-separated string
+      const phoneStr = phones.filter(p => p.trim()).join(";") || undefined;
+
       const response = await supabase.functions.invoke("create-user", {
         body: {
           email: isStudent ? `temp-${Date.now()}@student.local` : email,
           password: isStudent ? "temp-password" : password,
           full_name: fullName,
-          phone: phone || undefined,
+          phone: phoneStr,
           birth_date: birthDate ? format(birthDate, "yyyy-MM-dd") : undefined,
           role,
           campus_id: campusId || undefined,
@@ -477,16 +480,48 @@ export function AddUserDialog({
                 </>
               )}
 
-              {/* Phone */}
+              {/* Phones */}
               <div className="space-y-2">
-                <Label htmlFor="phone">Телефон</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+380501234567"
-                />
+                <div className="flex items-center justify-between">
+                  <Label>Телефони</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPhones([...phones, ""])}
+                    className="h-7 text-xs"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Додати
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {phones.map((phone, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Input
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => {
+                          const newPhones = [...phones];
+                          newPhones[index] = e.target.value;
+                          setPhones(newPhones);
+                        }}
+                        placeholder="+380501234567"
+                      />
+                      {phones.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setPhones(phones.filter((_, i) => i !== index))}
+                          className="shrink-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Birth Date */}

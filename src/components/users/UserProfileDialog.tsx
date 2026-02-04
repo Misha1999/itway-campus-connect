@@ -11,14 +11,38 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { uk } from "date-fns/locale";
-import { Mail, Phone, Calendar, Building2, Users, GraduationCap, Clock, Copy, Check, Eye, EyeOff, Key, Shield, Loader2 } from "lucide-react";
+import { 
+  CalendarIcon, 
+  Copy, 
+  Check, 
+  Eye, 
+  EyeOff, 
+  Key, 
+  Shield, 
+  Loader2, 
+  Plus, 
+  X,
+  User,
+  Save
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useStudyData } from "@/hooks/use-study-data";
 import type { UserWithRole } from "@/hooks/use-users";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -41,11 +65,6 @@ interface UserProfileDialogProps {
   onRolesUpdated?: () => void;
 }
 
-interface StudyInfo {
-  programName: string | null;
-  cohortName: string | null;
-}
-
 export function UserProfileDialog({
   open,
   onOpenChange,
@@ -55,21 +74,95 @@ export function UserProfileDialog({
   const [showPassword, setShowPassword] = useState(false);
   const [copiedLogin, setCopiedLogin] = useState(false);
   const [copiedPassword, setCopiedPassword] = useState(false);
-  const [studyInfo, setStudyInfo] = useState<StudyInfo>({ programName: null, cohortName: null });
   const [activeTab, setActiveTab] = useState("profile");
+  const [saving, setSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  
+  // Editable fields
+  const [fullName, setFullName] = useState("");
+  const [phones, setPhones] = useState<string[]>([""]);
+  const [birthDate, setBirthDate] = useState<Date | undefined>();
+  const [notes, setNotes] = useState("");
+  const [studyProgramId, setStudyProgramId] = useState("");
+  const [enrollmentCohortId, setEnrollmentCohortId] = useState("");
+  const [groupId, setGroupId] = useState("");
+  const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
+  
+  // Study info display
+  const [studyInfo, setStudyInfo] = useState<{ programName: string | null; cohortName: string | null }>({ 
+    programName: null, 
+    cohortName: null 
+  });
   
   // Roles management
   const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
   const [savingRoles, setSavingRoles] = useState(false);
   const [rolesChanged, setRolesChanged] = useState(false);
 
+  // Get campus ID from user's campuses
+  const campusId = user?.campuses?.[0]?.id || "";
+  const { studyPrograms, enrollmentCohorts } = useStudyData(campusId || undefined);
+
+  const isStudent = user?.roles?.includes("student");
+
+  // Filter study programs and cohorts by campus
+  const filteredPrograms = studyPrograms.filter(p => !campusId || p.campus_id === campusId);
+  const filteredCohorts = enrollmentCohorts.filter(c => !campusId || c.campus_id === campusId);
+
+  // Fetch groups when study program and enrollment cohort are selected
   useEffect(() => {
-    async function fetchStudyInfo() {
-      if (!user?.study_program_id && !user?.enrollment_cohort_id) {
-        setStudyInfo({ programName: null, cohortName: null });
+    const fetchGroups = async () => {
+      if (!studyProgramId || !enrollmentCohortId) {
+        setGroups([]);
         return;
       }
 
+      const { data, error } = await supabase
+        .from("groups")
+        .select("id, name")
+        .eq("study_program_id", studyProgramId)
+        .eq("enrollment_cohort_id", enrollmentCohortId)
+        .eq("is_active", true)
+        .order("name");
+
+      if (!error && data) {
+        setGroups(data);
+      } else {
+        setGroups([]);
+      }
+    };
+
+    fetchGroups();
+  }, [studyProgramId, enrollmentCohortId]);
+
+  // Populate form when user changes or dialog opens
+  useEffect(() => {
+    async function initializeForm() {
+      if (!user) return;
+      
+      setFullName(user.full_name);
+      // Parse phones - store as JSON array in phone field or use single phone
+      const userPhones = user.phone ? [user.phone] : [""];
+      setPhones(userPhones);
+      setBirthDate(user.birth_date ? new Date(user.birth_date) : undefined);
+      setStudyProgramId(user.study_program_id || "");
+      setEnrollmentCohortId(user.enrollment_cohort_id || "");
+      setGroupId(user.groups?.[0]?.id || "");
+      setSelectedRoles([...user.roles]);
+      setRolesChanged(false);
+      setActiveTab("profile");
+      setHasChanges(false);
+
+      // Fetch notes
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("notes")
+        .eq("id", user.id)
+        .single();
+      
+      setNotes(profileData?.notes || "");
+
+      // Fetch study info names
       let programName = null;
       let cohortName = null;
 
@@ -95,12 +188,26 @@ export function UserProfileDialog({
     }
 
     if (open && user) {
-      fetchStudyInfo();
-      setSelectedRoles([...user.roles]);
-      setRolesChanged(false);
-      setActiveTab("profile");
+      initializeForm();
     }
   }, [open, user]);
+
+  // Track changes
+  useEffect(() => {
+    if (!user) return;
+    
+    const phoneChanged = phones.filter(p => p.trim()).join(";") !== (user.phone || "");
+    const changed = 
+      fullName !== user.full_name ||
+      phoneChanged ||
+      (birthDate ? format(birthDate, "yyyy-MM-dd") : null) !== user.birth_date ||
+      notes !== "" || // simplified check
+      studyProgramId !== (user.study_program_id || "") ||
+      enrollmentCohortId !== (user.enrollment_cohort_id || "") ||
+      groupId !== (user.groups?.[0]?.id || "");
+    
+    setHasChanges(changed);
+  }, [fullName, phones, birthDate, notes, studyProgramId, enrollmentCohortId, groupId, user]);
 
   useEffect(() => {
     if (user) {
@@ -128,7 +235,6 @@ export function UserProfileDialog({
 
     setSavingRoles(true);
     try {
-      // Delete existing roles
       const { error: deleteError } = await supabase
         .from("user_roles")
         .delete()
@@ -136,7 +242,6 @@ export function UserProfileDialog({
 
       if (deleteError) throw deleteError;
 
-      // Insert new roles
       const { error: insertError } = await supabase
         .from("user_roles")
         .insert(
@@ -159,6 +264,84 @@ export function UserProfileDialog({
     }
   };
 
+  const handleSaveProfile = async () => {
+    if (!user || !fullName) {
+      toast.error("Введіть ПІБ");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // Save phones as semicolon-separated string
+      const phoneStr = phones.filter(p => p.trim()).join(";") || null;
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          full_name: fullName,
+          phone: phoneStr,
+          birth_date: birthDate ? format(birthDate, "yyyy-MM-dd") : null,
+          study_program_id: isStudent ? (studyProgramId || null) : null,
+          enrollment_cohort_id: isStudent ? (enrollmentCohortId || null) : null,
+          notes: notes || null,
+        })
+        .eq("id", user.id);
+
+      if (profileError) throw profileError;
+
+      // Update group membership if changed for students
+      if (isStudent) {
+        const currentGroupId = user.groups?.[0]?.id;
+        
+        if (groupId !== currentGroupId) {
+          if (currentGroupId) {
+            await supabase
+              .from("group_memberships")
+              .update({ left_at: new Date().toISOString() })
+              .eq("user_id", user.user_id)
+              .eq("group_id", currentGroupId)
+              .is("left_at", null);
+          }
+
+          if (groupId) {
+            await supabase
+              .from("group_memberships")
+              .insert({
+                user_id: user.user_id,
+                group_id: groupId,
+                role: "student",
+              });
+          }
+        }
+      }
+
+      toast.success("Профіль оновлено");
+      setHasChanges(false);
+      onRolesUpdated?.();
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      toast.error("Помилка оновлення профілю");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addPhone = () => {
+    setPhones([...phones, ""]);
+  };
+
+  const removePhone = (index: number) => {
+    if (phones.length > 1) {
+      setPhones(phones.filter((_, i) => i !== index));
+    }
+  };
+
+  const updatePhone = (index: number, value: string) => {
+    const newPhones = [...phones];
+    newPhones[index] = value;
+    setPhones(newPhones);
+  };
+
   if (!user) return null;
 
   const initials = user.full_name
@@ -167,7 +350,6 @@ export function UserProfileDialog({
     .join("")
     .slice(0, 2);
 
-  const isStudent = user.roles.includes("student");
   const decodedPassword = user.generated_password_hash 
     ? atob(user.generated_password_hash) 
     : null;
@@ -186,10 +368,10 @@ export function UserProfileDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Профіль користувача</DialogTitle>
-          <DialogDescription>Детальна інформація та налаштування</DialogDescription>
+          <DialogDescription>Перегляд та редагування даних</DialogDescription>
         </DialogHeader>
 
         {/* Header with avatar */}
@@ -215,7 +397,10 @@ export function UserProfileDialog({
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="profile">Профіль</TabsTrigger>
+            <TabsTrigger value="profile">
+              <User className="h-4 w-4 mr-1" />
+              Профіль
+            </TabsTrigger>
             <TabsTrigger value="credentials">
               <Key className="h-4 w-4 mr-1" />
               Доступ
@@ -226,68 +411,199 @@ export function UserProfileDialog({
             </TabsTrigger>
           </TabsList>
 
-          {/* Profile Tab */}
+          {/* Profile Tab - Editable */}
           <TabsContent value="profile" className="space-y-4 mt-4">
-            {/* Study info for students */}
-            {isStudent && (studyInfo.programName || studyInfo.cohortName) && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* Full Name */}
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="fullName">ПІБ *</Label>
+                <Input
+                  id="fullName"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Прізвище Ім'я По батькові"
+                />
+              </div>
+
+              {/* Phones */}
+              <div className="space-y-2 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <Label>Телефони</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={addPhone}
+                    className="h-7 text-xs"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Додати
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {phones.map((phone, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Input
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => updatePhone(index, e.target.value)}
+                        placeholder="+380501234567"
+                      />
+                      {phones.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removePhone(index)}
+                          className="shrink-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Birth Date */}
+              <div className="space-y-2">
+                <Label>Дата народження</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !birthDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {birthDate ? format(birthDate, "dd.MM.yyyy") : "Оберіть дату"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={birthDate}
+                      onSelect={setBirthDate}
+                      initialFocus
+                      className="pointer-events-auto"
+                      captionLayout="dropdown-buttons"
+                      fromYear={1950}
+                      toYear={new Date().getFullYear()}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label htmlFor="notes">Примітки</Label>
+                <Input
+                  id="notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Додаткова інформація"
+                />
+              </div>
+            </div>
+
+            {/* Student-specific fields */}
+            {isStudent && (
               <>
-                <div className="space-y-3 p-3 rounded-lg bg-accent/50">
-                  <div className="text-sm font-medium">Навчання</div>
-                  {studyInfo.programName && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <span className="text-muted-foreground">Програма: </span>
-                        <span className="font-medium">{studyInfo.programName}</span>
-                      </div>
-                    </div>
-                  )}
-                  {studyInfo.cohortName && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <span className="text-muted-foreground">Потік: </span>
-                        <span className="font-medium">{studyInfo.cohortName}</span>
-                      </div>
-                    </div>
-                  )}
+                <Separator />
+                <div className="grid gap-4 md:grid-cols-2">
+                  {/* Study Program */}
+                  <div className="space-y-2">
+                    <Label>Програма навчання</Label>
+                    <Select 
+                      value={studyProgramId || "__none__"} 
+                      onValueChange={(v) => {
+                        setStudyProgramId(v === "__none__" ? "" : v);
+                        setGroupId("");
+                      }}
+                      disabled={!campusId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={campusId ? "Оберіть програму" : "Спочатку призначте заклад"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Без програми</SelectItem>
+                        {filteredPrograms.map((program) => (
+                          <SelectItem key={program.id} value={program.id}>
+                            {program.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Enrollment Cohort */}
+                  <div className="space-y-2">
+                    <Label>Потік набору</Label>
+                    <Select 
+                      value={enrollmentCohortId || "__none__"} 
+                      onValueChange={(v) => {
+                        setEnrollmentCohortId(v === "__none__" ? "" : v);
+                        setGroupId("");
+                      }}
+                      disabled={!campusId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={campusId ? "Оберіть потік" : "Спочатку призначте заклад"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Без потоку</SelectItem>
+                        {filteredCohorts.map((cohort) => (
+                          <SelectItem key={cohort.id} value={cohort.id}>
+                            {cohort.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Group */}
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Група</Label>
+                    <Select 
+                      value={groupId || "__none__"} 
+                      onValueChange={(v) => setGroupId(v === "__none__" ? "" : v)}
+                      disabled={!studyProgramId || !enrollmentCohortId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={
+                          !studyProgramId || !enrollmentCohortId 
+                            ? "Спочатку оберіть програму і потік" 
+                            : "Оберіть групу"
+                        } />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Без групи</SelectItem>
+                        {groups.length === 0 ? (
+                          <SelectItem value="__no_groups__" disabled>
+                            Немає груп для обраних параметрів
+                          </SelectItem>
+                        ) : (
+                          groups.map((group) => (
+                            <SelectItem key={group.id} value={group.id}>
+                              {group.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </>
             )}
 
-            {/* Contact info */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 text-sm">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <span>{user.email || user.generated_login || "—"}</span>
-              </div>
-              {user.phone && (
-                <div className="flex items-center gap-3 text-sm">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span>{user.phone}</span>
-                </div>
-              )}
-              {user.birth_date && (
-                <div className="flex items-center gap-3 text-sm">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span>
-                    {format(new Date(user.birth_date), "d MMMM yyyy", {
-                      locale: uk,
-                    })}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Campuses */}
+            {/* Campuses - Read only */}
             {user.campuses.length > 0 && (
               <>
                 <Separator />
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                    Заклади
-                  </div>
+                  <Label>Заклади</Label>
                   <div className="flex flex-wrap gap-1">
                     {user.campuses.map((campus) => (
                       <Badge key={campus.id} variant="secondary">
@@ -299,38 +615,21 @@ export function UserProfileDialog({
               </>
             )}
 
-            {/* Groups */}
-            {user.groups.length > 0 && (
-              <>
-                <Separator />
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    Групи
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {user.groups.map((group) => (
-                      <Badge key={group.id} variant="secondary">
-                        {group.name}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </>
+            {/* Save button */}
+            {hasChanges && (
+              <Button 
+                onClick={handleSaveProfile} 
+                disabled={saving || !fullName}
+                className="w-full"
+              >
+                {saving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
+                Зберегти зміни
+              </Button>
             )}
-
-            {/* Status & dates */}
-            <Separator />
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Статус</span>
-              <StatusBadge status={user.status} />
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Створено</span>
-              <span>
-                {format(new Date(user.created_at), "d MMM yyyy", { locale: uk })}
-              </span>
-            </div>
           </TabsContent>
 
           {/* Credentials Tab */}
