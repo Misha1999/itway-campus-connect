@@ -12,6 +12,7 @@ import GradebookPage from "./pages/Gradebook";
 import AssignmentsPage from "./pages/Assignments";
 import AssignmentCreatePage from "./pages/AssignmentCreate";
 import LibraryPage from "./pages/Library";
+import MaterialEditorPage from "./pages/MaterialEditor";
 import CoinsPage from "./pages/Coins";
 import UsersPage from "./pages/Users";
 import CampusesPage from "./pages/Campuses";
@@ -39,6 +40,8 @@ const App = () => (
             <Route path="/assignments" element={<AssignmentsPage />} />
             <Route path="/assignments/create" element={<AssignmentCreatePage />} />
             <Route path="/library" element={<LibraryPage />} />
+            <Route path="/library/create" element={<MaterialEditorPage />} />
+            <Route path="/library/:id/edit" element={<MaterialEditorPage />} />
             <Route path="/coins" element={<CoinsPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/campuses" element={<CampusesPage />} />
