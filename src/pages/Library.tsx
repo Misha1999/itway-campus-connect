@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +30,6 @@ import {
 } from "lucide-react";
 import { useMaterials, type Material, type MaterialContentType } from "@/hooks/use-materials";
 import { useCampuses } from "@/hooks/use-campuses";
-import { AddMaterialDialog } from "@/components/materials/AddMaterialDialog";
 import { MaterialAccessDialog } from "@/components/materials/MaterialAccessDialog";
 import { format } from "date-fns";
 import { uk } from "date-fns/locale";
@@ -172,6 +172,7 @@ function MaterialCard({ material, onView, onEdit, onManageAccess, onDelete, onPu
 }
 
 export default function LibraryPage() {
+  const navigate = useNavigate();
   const { materials, loading, updateMaterial, deleteMaterial } = useMaterials();
   const { campuses } = useCampuses();
   
@@ -180,7 +181,6 @@ export default function LibraryPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [campusFilter, setCampusFilter] = useState("all");
   
-  const [showAddDialog, setShowAddDialog] = useState(false);
   const [accessDialogMaterial, setAccessDialogMaterial] = useState<Material | null>(null);
 
   const filteredMaterials = useMemo(() => {
@@ -248,7 +248,7 @@ export default function LibraryPage() {
           <Upload className="h-4 w-4 mr-2" />
           Завантажити
         </Button>
-        <Button onClick={() => setShowAddDialog(true)}>
+        <Button onClick={() => navigate('/library/create')}>
           <Plus className="h-4 w-4 mr-2" />
           Додати
         </Button>
@@ -361,8 +361,8 @@ export default function LibraryPage() {
                 <MaterialCard 
                   key={item.id} 
                   material={item}
-                  onView={() => {}}
-                  onEdit={() => {}}
+                  onView={() => navigate(`/library/${item.id}/edit`)}
+                  onEdit={() => navigate(`/library/${item.id}/edit`)}
                   onManageAccess={(m) => setAccessDialogMaterial(m)}
                   onDelete={handleDelete}
                   onPublish={handlePublish}
@@ -376,7 +376,7 @@ export default function LibraryPage() {
               description="Додайте навчальні матеріали для вашої бібліотеки"
               action={{
                 label: "Додати матеріал",
-                onClick: () => setShowAddDialog(true),
+                onClick: () => navigate('/library/create'),
               }}
             />
           )}
@@ -389,8 +389,8 @@ export default function LibraryPage() {
                 <MaterialCard 
                   key={item.id} 
                   material={item}
-                  onView={() => {}}
-                  onEdit={() => {}}
+                  onView={() => navigate(`/library/${item.id}/edit`)}
+                  onEdit={() => navigate(`/library/${item.id}/edit`)}
                   onManageAccess={(m) => setAccessDialogMaterial(m)}
                   onDelete={handleDelete}
                   onPublish={handlePublish}
@@ -413,8 +413,8 @@ export default function LibraryPage() {
                 <MaterialCard 
                   key={item.id} 
                   material={item}
-                  onView={() => {}}
-                  onEdit={() => {}}
+                  onView={() => navigate(`/library/${item.id}/edit`)}
+                  onEdit={() => navigate(`/library/${item.id}/edit`)}
                   onManageAccess={(m) => setAccessDialogMaterial(m)}
                   onDelete={handleDelete}
                   onPublish={handlePublish}
@@ -430,13 +430,6 @@ export default function LibraryPage() {
           )}
         </TabsContent>
       </Tabs>
-
-      {/* Add Material Dialog */}
-      <AddMaterialDialog
-        open={showAddDialog}
-        onOpenChange={setShowAddDialog}
-        campuses={campuses}
-      />
 
       {/* Material Access Dialog */}
       <MaterialAccessDialog
