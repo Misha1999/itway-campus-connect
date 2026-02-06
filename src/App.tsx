@@ -13,6 +13,7 @@ import AssignmentsPage from "./pages/Assignments";
 import AssignmentCreatePage from "./pages/AssignmentCreate";
 import LibraryPage from "./pages/Library";
 import MaterialEditorPage from "./pages/MaterialEditor";
+import CourseDetailPage from "./pages/CourseDetail";
 import CoinsPage from "./pages/Coins";
 import UsersPage from "./pages/Users";
 import CampusesPage from "./pages/Campuses";
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/library" element={<LibraryPage />} />
             <Route path="/library/create" element={<MaterialEditorPage />} />
             <Route path="/library/:id/edit" element={<MaterialEditorPage />} />
+            <Route path="/library/courses/:id" element={<CourseDetailPage />} />
             <Route path="/coins" element={<CoinsPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/campuses" element={<CampusesPage />} />
