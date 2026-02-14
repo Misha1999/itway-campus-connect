@@ -703,6 +703,8 @@ export type Database = {
           description: string | null
           duration_minutes: number | null
           id: string
+          lesson_type: string
+          material_id: string | null
           module_id: string
           name: string
           order_index: number
@@ -712,6 +714,8 @@ export type Database = {
           description?: string | null
           duration_minutes?: number | null
           id?: string
+          lesson_type?: string
+          material_id?: string | null
           module_id: string
           name: string
           order_index?: number
@@ -721,11 +725,20 @@ export type Database = {
           description?: string | null
           duration_minutes?: number | null
           id?: string
+          lesson_type?: string
+          material_id?: string | null
           module_id?: string
           name?: string
           order_index?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "lessons_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lessons_module_id_fkey"
             columns: ["module_id"]
