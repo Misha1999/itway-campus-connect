@@ -146,8 +146,8 @@ export function CourseContentEditor({
   };
 
   const getLessonTypeInfo = (lesson: Lesson) => {
-    // For now, default to 'lesson' type - can be extended later
-    return LESSON_TYPES[0];
+    const lt = (lesson as any).lesson_type || 'lesson';
+    return LESSON_TYPES.find(t => t.value === lt) || LESSON_TYPES[0];
   };
 
   const modules = course.modules || [];
@@ -286,14 +286,15 @@ export function CourseContentEditor({
                       return (
                         <div 
                           key={lesson.id}
-                          className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 group"
+                          className="flex items-center gap-3 p-3 rounded-md hover:bg-muted/50 group cursor-pointer border border-transparent hover:border-border transition-colors"
+                          onClick={() => onOpenLesson?.(lesson)}
                         >
-                          <span className="text-sm text-muted-foreground w-12">
+                          <span className="text-sm text-muted-foreground w-12 shrink-0">
                             {moduleIndex + 1}.{lessonIndex + 1}
                           </span>
                           
                           {editingLesson === lesson.id ? (
-                            <div className="flex-1 flex gap-2">
+                            <div className="flex-1 flex gap-2" onClick={(e) => e.stopPropagation()}>
                               <Input
                                 value={editValue}
                                 onChange={(e) => setEditValue(e.target.value)}
@@ -313,19 +314,23 @@ export function CourseContentEditor({
                             </div>
                           ) : (
                             <>
-                              <div 
-                                className="flex-1 flex items-center gap-2 cursor-pointer"
-                                onClick={() => onOpenLesson?.(lesson)}
-                              >
-                                <span className="font-medium text-sm">{lesson.name}</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="font-medium text-sm block">{lesson.name}</span>
+                                <div className="flex items-center gap-3 mt-1">
+                                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${lesson.material_id ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
+                                    <BookOpen className="h-3 w-3" />
+                                    Заняття
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/30" />
+                                    <FileCheck className="h-3 w-3" />
+                                    Завдання
+                                  </span>
+                                </div>
                               </div>
                               
-                              <Badge variant="secondary" className={`text-xs ${typeInfo.color}`}>
-                                <TypeIcon className="h-3 w-3 mr-1" />
-                                {typeInfo.label}
-                              </Badge>
-                              
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1" onClick={(e) => e.stopPropagation()}>
                                 <Button 
                                   variant="ghost" 
                                   size="icon" 

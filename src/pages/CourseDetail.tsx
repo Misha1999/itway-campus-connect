@@ -121,9 +121,7 @@ export default function CourseDetailPage() {
   };
 
   const handleOpenLesson = (lesson: Lesson) => {
-    // Navigate to material editor for this lesson
-    // For now, just show a toast
-    toast.info(`Відкрити урок: ${lesson.name}`);
+    navigate(`/library/courses/${id}/lessons/${lesson.id}`);
   };
 
   if (loading) {
