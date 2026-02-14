@@ -12,8 +12,11 @@ export interface Lesson {
   description: string | null;
   order_index: number;
   duration_minutes: number | null;
-  lesson_type?: LessonType; // Extended for activity types
-  material_id?: string | null; // Link to material
+  lesson_type?: LessonType;
+  material_id?: string | null;
+  homework_material_id?: string | null;
+  test_material_id?: string | null;
+  project_material_id?: string | null;
 }
 
 export interface CourseModule {
@@ -196,6 +199,9 @@ export function useCourses() {
             duration_minutes: l.duration_minutes,
             lesson_type: (l as any).lesson_type || 'lesson',
             material_id: (l as any).material_id || null,
+            homework_material_id: (l as any).homework_material_id || null,
+            test_material_id: (l as any).test_material_id || null,
+            project_material_id: (l as any).project_material_id || null,
           });
           return acc;
         }, {} as Record<string, Lesson[]>);

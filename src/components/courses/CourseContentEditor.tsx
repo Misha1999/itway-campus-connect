@@ -320,12 +320,18 @@ export function CourseContentEditor({
                                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                                     <span className={`inline-block w-1.5 h-1.5 rounded-full ${lesson.material_id ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
                                     <BookOpen className="h-3 w-3" />
-                                    Заняття
                                   </span>
                                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/30" />
+                                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${(lesson as any).homework_material_id ? 'bg-amber-500' : 'bg-muted-foreground/30'}`} />
                                     <FileCheck className="h-3 w-3" />
-                                    Завдання
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${(lesson as any).test_material_id ? 'bg-destructive' : 'bg-muted-foreground/30'}`} />
+                                    <ClipboardList className="h-3 w-3" />
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${(lesson as any).project_material_id ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
+                                    <FolderKanban className="h-3 w-3" />
                                   </span>
                                 </div>
                               </div>

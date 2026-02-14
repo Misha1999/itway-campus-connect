@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { EmptyState } from "@/components/ui/empty-state";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
@@ -15,7 +14,6 @@ import {
   ClipboardList,
   FolderKanban,
   Plus,
-  ExternalLink,
   Pencil,
   FileText,
 } from "lucide-react";
@@ -28,23 +26,22 @@ interface LessonData {
   duration_minutes: number | null;
   lesson_type: string;
   material_id: string | null;
+  homework_material_id: string | null;
+  test_material_id: string | null;
+  project_material_id: string | null;
   module_id: string;
 }
 
-interface ModuleData {
+interface MaterialInfo {
   id: string;
-  name: string;
-  course_id: string;
-}
-
-interface CourseData {
-  id: string;
-  name: string;
+  title: string;
+  status: string;
 }
 
 const ACTIVITY_SECTIONS = [
   {
     key: "lesson",
+    materialField: "material_id" as const,
     label: "Заняття",
     description: "Матеріал уроку для проведення заняття",
     icon: BookOpen,
@@ -53,6 +50,7 @@ const ACTIVITY_SECTIONS = [
   },
   {
     key: "homework",
+    materialField: "homework_material_id" as const,
     label: "Домашнє завдання",
     description: "Завдання для самостійної роботи студентів",
     icon: FileCheck,
@@ -61,6 +59,7 @@ const ACTIVITY_SECTIONS = [
   },
   {
     key: "test",
+    materialField: "test_material_id" as const,
     label: "Тест",
     description: "Тестування знань по темі уроку",
     icon: ClipboardList,
@@ -69,6 +68,7 @@ const ACTIVITY_SECTIONS = [
   },
   {
     key: "project",
+    materialField: "project_material_id" as const,
     label: "Проєкт",
     description: "Довгострокове практичне завдання",
     icon: FolderKanban,
@@ -77,20 +77,20 @@ const ACTIVITY_SECTIONS = [
   },
 ] as const;
 
+type MaterialFieldKey = typeof ACTIVITY_SECTIONS[number]['materialField'];
+
 export default function LessonDetailPage() {
   const navigate = useNavigate();
   const { courseId, lessonId } = useParams();
   const [lesson, setLesson] = useState<LessonData | null>(null);
-  const [module, setModule] = useState<ModuleData | null>(null);
-  const [course, setCourse] = useState<CourseData | null>(null);
-  const [material, setMaterial] = useState<{ id: string; title: string; status: string } | null>(null);
+  const [breadcrumb, setBreadcrumb] = useState("");
+  const [materials, setMaterials] = useState<Record<string, MaterialInfo>>({});
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     if (!lessonId || !courseId) return;
     setLoading(true);
 
-    // Fetch lesson
     const { data: lessonData, error: lessonError } = await supabase
       .from("lessons")
       .select("*")
@@ -103,25 +103,49 @@ export default function LessonDetailPage() {
       return;
     }
 
-    setLesson(lessonData as LessonData);
+    const ld = lessonData as any;
+    const lessonObj: LessonData = {
+      id: ld.id,
+      name: ld.name,
+      description: ld.description,
+      order_index: ld.order_index,
+      duration_minutes: ld.duration_minutes,
+      lesson_type: ld.lesson_type || "lesson",
+      material_id: ld.material_id || null,
+      homework_material_id: ld.homework_material_id || null,
+      test_material_id: ld.test_material_id || null,
+      project_material_id: ld.project_material_id || null,
+      module_id: ld.module_id,
+    };
+    setLesson(lessonObj);
 
-    // Fetch module and course in parallel
+    // Fetch breadcrumb
     const [moduleRes, courseRes] = await Promise.all([
-      supabase.from("modules").select("id, name, course_id").eq("id", lessonData.module_id).single(),
-      supabase.from("courses").select("id, name").eq("id", courseId).single(),
+      supabase.from("modules").select("name").eq("id", ld.module_id).single(),
+      supabase.from("courses").select("name").eq("id", courseId).single(),
     ]);
+    if (courseRes.data && moduleRes.data) {
+      setBreadcrumb(`${courseRes.data.name} → ${moduleRes.data.name}`);
+    }
 
-    if (moduleRes.data) setModule(moduleRes.data);
-    if (courseRes.data) setCourse(courseRes.data);
+    // Fetch all linked materials
+    const materialIds = [
+      ld.material_id,
+      ld.homework_material_id,
+      ld.test_material_id,
+      ld.project_material_id,
+    ].filter(Boolean) as string[];
 
-    // Fetch linked material if exists
-    if (lessonData.material_id) {
+    if (materialIds.length > 0) {
       const { data: matData } = await supabase
         .from("materials")
         .select("id, title, status")
-        .eq("id", lessonData.material_id)
-        .single();
-      if (matData) setMaterial(matData);
+        .in("id", materialIds);
+      if (matData) {
+        const map: Record<string, MaterialInfo> = {};
+        matData.forEach((m) => { map[m.id] = m; });
+        setMaterials(map);
+      }
     }
 
     setLoading(false);
@@ -131,14 +155,13 @@ export default function LessonDetailPage() {
     loadData();
   }, [loadData]);
 
-  const handleCreateMaterial = async (activityType: string) => {
+  const handleCreateMaterial = async (section: typeof ACTIVITY_SECTIONS[number]) => {
     if (!lesson) return;
 
-    // Create a new material linked to this lesson
     const { data: newMaterial, error } = await supabase
       .from("materials")
       .insert({
-        title: `${lesson.name} — ${ACTIVITY_SECTIONS.find(s => s.key === activityType)?.label || activityType}`,
+        title: `${lesson.name} — ${section.label}`,
         content_type: "lesson",
         status: "draft",
       })
@@ -150,20 +173,22 @@ export default function LessonDetailPage() {
       return;
     }
 
-    // Link material to lesson
-    await supabase
+    // Link material to the correct field
+    const { error: updateError } = await supabase
       .from("lessons")
-      .update({ material_id: newMaterial.id })
+      .update({ [section.materialField]: newMaterial.id })
       .eq("id", lesson.id);
 
-    // Navigate to material editor
+    if (updateError) {
+      toast.error("Помилка прив'язки матеріалу");
+      return;
+    }
+
     navigate(`/library/${newMaterial.id}/edit`);
   };
 
-  const handleOpenMaterial = () => {
-    if (material) {
-      navigate(`/library/${material.id}/edit`);
-    }
+  const handleOpenMaterial = (materialId: string) => {
+    navigate(`/library/${materialId}/edit`);
   };
 
   if (loading) {
@@ -171,7 +196,7 @@ export default function LessonDetailPage() {
       <div className="space-y-6 animate-fade-in">
         <PageHeader title="Завантаження..." description="" />
         <div className="space-y-4">
-          {[1, 2, 3].map(i => (
+          {[1, 2, 3].map((i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="h-24" />
             </Card>
@@ -196,26 +221,18 @@ export default function LessonDetailPage() {
 
   return (
     <div className="space-y-6 animate-fade-in pb-20">
-      {/* Header */}
-      <PageHeader
-        title={lesson.name}
-        description={
-          course && module
-            ? `${course.name} → ${module.name}`
-            : ""
-        }
-      >
+      <PageHeader title={lesson.name} description={breadcrumb}>
         <Button variant="ghost" onClick={() => navigate(`/library/courses/${courseId}`)}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Назад до курсу
         </Button>
       </PageHeader>
 
-      {/* Activity sections */}
       <div className="space-y-4">
         {ACTIVITY_SECTIONS.map((section) => {
           const Icon = section.icon;
-          const hasMaterial = section.key === "lesson" && material;
+          const materialId = lesson[section.materialField];
+          const mat = materialId ? materials[materialId] : null;
 
           return (
             <Card key={section.key} className="overflow-hidden">
@@ -230,75 +247,40 @@ export default function LessonDetailPage() {
                       <p className="text-sm text-muted-foreground">{section.description}</p>
                     </div>
                   </div>
-                  {hasMaterial && (
+                  {mat && (
                     <Badge variant="secondary" className="text-xs">
-                      {material.status === "published" ? "Опубліковано" : "Чернетка"}
+                      {mat.status === "published" ? "Опубліковано" : "Чернетка"}
                     </Badge>
                   )}
                 </div>
               </CardHeader>
               <Separator />
               <CardContent className="pt-4">
-                {section.key === "lesson" && material ? (
-                  /* Material is linked */
+                {mat ? (
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div className="flex items-center gap-3">
                       <FileText className="h-5 w-5 text-muted-foreground" />
                       <div>
-                        <p className="font-medium text-sm">{material.title}</p>
+                        <p className="font-medium text-sm">{mat.title}</p>
                         <p className="text-xs text-muted-foreground">
-                          Блочний матеріал • {material.status === "published" ? "Опубліковано" : "Чернетка"}
+                          Блочний матеріал • {mat.status === "published" ? "Опубліковано" : "Чернетка"}
                         </p>
                       </div>
                     </div>
-                    <Button size="sm" variant="outline" onClick={handleOpenMaterial}>
+                    <Button size="sm" variant="outline" onClick={() => handleOpenMaterial(mat.id)}>
                       <Pencil className="h-4 w-4 mr-1" />
                       Редагувати
                     </Button>
                   </div>
-                ) : section.key === "lesson" ? (
-                  /* No material yet for lesson */
-                  <div className="flex flex-col items-center py-6 text-center">
-                    <BookOpen className="h-10 w-10 text-muted-foreground mb-3" />
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Матеріал заняття ще не створено
-                    </p>
-                    <Button size="sm" onClick={() => handleCreateMaterial("lesson")}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Створити матеріал
-                    </Button>
-                  </div>
-                ) : section.key === "homework" ? (
-                  <div className="flex flex-col items-center py-6 text-center">
-                    <FileCheck className="h-10 w-10 text-muted-foreground mb-3" />
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Домашнє завдання ще не додано
-                    </p>
-                    <Button size="sm" onClick={() => handleCreateMaterial("homework")}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Створити завдання
-                    </Button>
-                  </div>
-                ) : section.key === "test" ? (
-                  <div className="flex flex-col items-center py-6 text-center">
-                    <ClipboardList className="h-10 w-10 text-muted-foreground mb-3" />
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Тест ще не створено
-                    </p>
-                    <Button size="sm" onClick={() => handleCreateMaterial("test")}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Створити тест
-                    </Button>
-                  </div>
                 ) : (
                   <div className="flex flex-col items-center py-6 text-center">
-                    <FolderKanban className="h-10 w-10 text-muted-foreground mb-3" />
+                    <Icon className="h-10 w-10 text-muted-foreground mb-3" />
                     <p className="text-sm text-muted-foreground mb-3">
-                      Проєкт ще не створено
+                      {section.label} ще не створено
                     </p>
-                    <Button size="sm" onClick={() => handleCreateMaterial("project")}>
+                    <Button size="sm" onClick={() => handleCreateMaterial(section)}>
                       <Plus className="h-4 w-4 mr-1" />
-                      Створити проєкт
+                      Створити {section.label.toLowerCase()}
                     </Button>
                   </div>
                 )}

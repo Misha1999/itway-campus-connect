@@ -702,36 +702,52 @@ export type Database = {
           created_at: string
           description: string | null
           duration_minutes: number | null
+          homework_material_id: string | null
           id: string
           lesson_type: string
           material_id: string | null
           module_id: string
           name: string
           order_index: number
+          project_material_id: string | null
+          test_material_id: string | null
         }
         Insert: {
           created_at?: string
           description?: string | null
           duration_minutes?: number | null
+          homework_material_id?: string | null
           id?: string
           lesson_type?: string
           material_id?: string | null
           module_id: string
           name: string
           order_index?: number
+          project_material_id?: string | null
+          test_material_id?: string | null
         }
         Update: {
           created_at?: string
           description?: string | null
           duration_minutes?: number | null
+          homework_material_id?: string | null
           id?: string
           lesson_type?: string
           material_id?: string | null
           module_id?: string
           name?: string
           order_index?: number
+          project_material_id?: string | null
+          test_material_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "lessons_homework_material_id_fkey"
+            columns: ["homework_material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lessons_material_id_fkey"
             columns: ["material_id"]
@@ -744,6 +760,20 @@ export type Database = {
             columns: ["module_id"]
             isOneToOne: false
             referencedRelation: "modules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessons_project_material_id_fkey"
+            columns: ["project_material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessons_test_material_id_fkey"
+            columns: ["test_material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
             referencedColumns: ["id"]
           },
         ]
