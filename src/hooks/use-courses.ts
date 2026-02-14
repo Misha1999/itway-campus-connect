@@ -194,6 +194,8 @@ export function useCourses() {
             description: l.description,
             order_index: l.order_index,
             duration_minutes: l.duration_minutes,
+            lesson_type: (l as any).lesson_type || 'lesson',
+            material_id: (l as any).material_id || null,
           });
           return acc;
         }, {} as Record<string, Lesson[]>);
