@@ -1372,6 +1372,10 @@ export type Database = {
         Args: { _group_id: string; _user_id: string }
         Returns: boolean
       }
+      user_can_access_material: {
+        Args: { _material_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role:
