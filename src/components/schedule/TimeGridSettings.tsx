@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,10 +49,12 @@ interface TimeGridSettingsProps {
 }
 
 export function TimeGridSettings({ config, onUpdate }: TimeGridSettingsProps) {
+  const [open, setOpen] = useState(false);
   const [startH, setStartH] = useState(String(config.startHour));
   const [endH, setEndH] = useState(String(config.endHour));
   const [snap, setSnap] = useState(String(config.snapMinutes));
   const [fineSnap, setFineSnap] = useState(String(config.fineSnapMinutes));
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setStartH(String(config.startHour));
@@ -61,16 +63,38 @@ export function TimeGridSettings({ config, onUpdate }: TimeGridSettingsProps) {
     setFineSnap(String(config.fineSnapMinutes));
   }, [config]);
 
+  const applyValues = useCallback((s: string, e: string, sn: string, fn: string) => {
+    const sv = Math.max(0, Math.min(23, parseInt(s) || 9));
+    const ev = Math.max(sv + 1, Math.min(24, parseInt(e) || 19));
+    const snv = Math.max(1, Math.min(60, parseInt(sn) || 15));
+    const fnv = Math.max(1, Math.min(snv, parseInt(fn) || 5));
+    onUpdate({ startHour: sv, endHour: ev, snapMinutes: snv, fineSnapMinutes: fnv });
+  }, [onUpdate]);
+
+  // Auto-apply after 1 second of inactivity
+  const scheduleAutoApply = useCallback((s: string, e: string, sn: string, fn: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => applyValues(s, e, sn, fn), 1000);
+  }, [applyValues]);
+
+  useEffect(() => {
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, []);
+
+  const handleChange = (setter: (v: string) => void, value: string, field: 's' | 'e' | 'sn' | 'fn') => {
+    setter(value);
+    const vals = { s: startH, e: endH, sn: snap, fn: fineSnap, [field]: value };
+    scheduleAutoApply(vals.s, vals.e, vals.sn, vals.fn);
+  };
+
   const handleApply = () => {
-    const s = Math.max(0, Math.min(23, parseInt(startH) || 9));
-    const e = Math.max(s + 1, Math.min(24, parseInt(endH) || 19));
-    const sn = Math.max(1, Math.min(60, parseInt(snap) || 15));
-    const fn = Math.max(1, Math.min(sn, parseInt(fineSnap) || 5));
-    onUpdate({ startHour: s, endHour: e, snapMinutes: sn, fineSnapMinutes: fn });
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    applyValues(startH, endH, snap, fineSnap);
+    setOpen(false);
   };
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="h-8 w-8">
           <Settings2 className="h-4 w-4" />
@@ -86,7 +110,7 @@ export function TimeGridSettings({ config, onUpdate }: TimeGridSettingsProps) {
               min={0}
               max={23}
               value={startH}
-              onChange={(e) => setStartH(e.target.value)}
+              onChange={(e) => handleChange(setStartH, e.target.value, 's')}
               className="h-8"
             />
           </div>
@@ -97,7 +121,7 @@ export function TimeGridSettings({ config, onUpdate }: TimeGridSettingsProps) {
               min={1}
               max={24}
               value={endH}
-              onChange={(e) => setEndH(e.target.value)}
+              onChange={(e) => handleChange(setEndH, e.target.value, 'e')}
               className="h-8"
             />
           </div>
@@ -110,7 +134,7 @@ export function TimeGridSettings({ config, onUpdate }: TimeGridSettingsProps) {
               min={1}
               max={60}
               value={snap}
-              onChange={(e) => setSnap(e.target.value)}
+              onChange={(e) => handleChange(setSnap, e.target.value, 'sn')}
               className="h-8"
             />
           </div>
@@ -121,7 +145,7 @@ export function TimeGridSettings({ config, onUpdate }: TimeGridSettingsProps) {
               min={1}
               max={30}
               value={fineSnap}
-              onChange={(e) => setFineSnap(e.target.value)}
+              onChange={(e) => handleChange(setFineSnap, e.target.value, 'fn')}
               className="h-8"
             />
           </div>
