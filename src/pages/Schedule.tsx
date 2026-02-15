@@ -20,9 +20,11 @@ import {
   MonthView,
   EventFormDialog,
   EventDetailDialog,
+  StudentScheduleView,
 } from "@/components/schedule";
 import { BulkActionsBar } from "@/components/schedule/BulkActionsBar";
 import { TimeGridSettings, useTimeGridConfig } from "@/components/schedule/TimeGridSettings";
+import { useUserRole } from "@/hooks/use-user-role";
 
 interface EnrollmentCohort {
   id: string;
@@ -31,6 +33,7 @@ interface EnrollmentCohort {
 }
 
 export default function SchedulePage() {
+  const { isStudent, isAdminOrAbove, isTeacher, loading: roleLoading } = useUserRole();
   const [view, setView] = useState("week");
   const [selectedCampusId, setSelectedCampusId] = useState("all");
   const [selectedCohortId, setSelectedCohortId] = useState("all");
@@ -143,6 +146,36 @@ export default function SchedulePage() {
   };
 
   const clearSelection = () => setSelectedEventIds(new Set());
+
+  // Student view — beautiful compact schedule
+  if (isStudent && !isAdminOrAbove && !isTeacher) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <PageHeader title="Мій розклад" description="Твої заняття на тиждень" />
+        {loading || roleLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <Skeleton key={i} className="h-[160px] rounded-xl" />
+            ))}
+          </div>
+        ) : (
+          <StudentScheduleView
+            events={filteredEvents}
+            onEventClick={handleEventClick}
+          />
+        )}
+        <EventDetailDialog
+          open={showEventDetail}
+          onOpenChange={setShowEventDetail}
+          event={selectedEvent}
+          onEdit={() => {}}
+          onDelete={async () => false}
+          onCancel={async () => false}
+          onRestore={async () => false}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
