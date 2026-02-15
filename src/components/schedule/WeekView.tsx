@@ -1,10 +1,20 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { format, startOfWeek, addDays, isSameDay } from "date-fns";
 import { uk } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, MapPin, Video, Plus, GripVertical, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, MapPin, Video, Plus, Clock, ArrowRight } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { ScheduleEvent } from "@/hooks/use-schedule";
 import type { Database } from "@/integrations/supabase/types";
 import type { TimeGridConfig } from "./TimeGridSettings";
@@ -40,6 +50,17 @@ function minutesToStr(min: number) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+// Pending move for confirmation dialog
+interface PendingMove {
+  event: ScheduleEvent;
+  newStartStr: string;
+  newEndStr: string;
+  newDate: Date;
+  oldStartStr: string;
+  oldEndStr: string;
+  oldDateStr: string;
+}
+
 export function WeekView({
   events,
   onEventClick,
@@ -56,10 +77,11 @@ export function WeekView({
 
   const [weekOffset, setWeekOffset] = useState(0);
 
-  // In-day drag state
+  // Drag state — unified for both in-day and cross-day
   const [dragState, setDragState] = useState<{
     eventId: string;
-    dateKey: string;
+    originDateKey: string;
+    currentDateKey: string;
     startY: number;
     currentY: number;
     originalMin: number;
@@ -68,18 +90,15 @@ export function WeekView({
     isFineMode: boolean;
   } | null>(null);
 
-  // Cross-day drop indicator
-  const [crossDayDrop, setCrossDayDrop] = useState<{
-    dateKey: string;
-    hour: number;
-    eventId: string;
-  } | null>(null);
+  // Confirmation dialog
+  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
 
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastMoveTimeRef = useRef<number>(0);
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const isDraggingRef = useRef(false);
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const weekDates = useMemo(() => {
     const today = new Date();
@@ -113,6 +132,10 @@ export function WeekView({
     return ((min - gridStartMin) / 60) * HOUR_HEIGHT;
   }, [gridStartMin]);
 
+  const yToMin = useCallback((y: number) => {
+    return gridStartMin + (y / HOUR_HEIGHT) * 60;
+  }, [gridStartMin]);
+
   const snapTo = useCallback((min: number, snap: number) => {
     return Math.round(min / snap) * snap;
   }, []);
@@ -136,51 +159,22 @@ export function WeekView({
     return snapTo(Math.max(gridStartMin, Math.min(gridEndMin - 30, rawNewStart)), dragState.currentSnap);
   }, [dragState, snapTo, gridStartMin, gridEndMin]);
 
-  // Cross-day drag handlers
-  const handleCrossDragStart = (e: React.DragEvent, eventId: string) => {
-    e.dataTransfer.setData("text/plain", eventId);
-    e.dataTransfer.effectAllowed = "move";
-    // Create a minimal drag image
-    const ghost = document.createElement("div");
-    ghost.className = "bg-primary text-primary-foreground text-xs rounded px-2 py-1 font-medium shadow-lg";
-    ghost.textContent = events.find(ev => ev.id === eventId)?.title || "Подія";
-    ghost.style.position = "fixed";
-    ghost.style.top = "-100px";
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 40, 16);
-    requestAnimationFrame(() => document.body.removeChild(ghost));
-  };
-
-  const handleCrossDragOver = (e: React.DragEvent, dateKey: string, hour: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const eventId = e.dataTransfer.types.includes("text/plain") ? "pending" : "";
-    setCrossDayDrop({ dateKey, hour, eventId });
-  };
-
-  const handleCrossDragLeave = (e: React.DragEvent) => {
-    const related = e.relatedTarget as HTMLElement | null;
-    if (!related || !e.currentTarget.contains(related)) {
-      setCrossDayDrop(null);
+  // Find dateKey from mouse X position
+  const findDateKeyAtX = useCallback((clientX: number): string | null => {
+    for (const [key, col] of Object.entries(columnRefs.current)) {
+      if (!col) continue;
+      const r = col.getBoundingClientRect();
+      if (clientX >= r.left && clientX <= r.right) return key;
     }
-  };
+    return null;
+  }, []);
 
-  const handleCrossDrop = async (e: React.DragEvent, date: Date, hour: number) => {
+  // Unified mouse-based drag (no HTML5 drag API)
+  const startDrag = useCallback((e: React.MouseEvent, event: ScheduleEvent, dateKey: string) => {
+    if (!onMoveEvent || e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('[role="checkbox"]')) return;
+    
     e.preventDefault();
-    setCrossDayDrop(null);
-    const eventId = e.dataTransfer.getData("text/plain");
-    if (!eventId || !onMoveEvent) return;
-    const event = events.find((ev) => ev.id === eventId);
-    if (!event) return;
-    const duration = (new Date(event.end_time).getTime() - new Date(event.start_time).getTime()) / 60000;
-    const startTimeStr = minutesToStr(hour * 60);
-    const endTimeStr = minutesToStr(hour * 60 + duration);
-    await onMoveEvent(eventId, date, startTimeStr, endTimeStr);
-  };
-
-  // In-day drag
-  const startInDayDrag = useCallback((e: React.MouseEvent, event: ScheduleEvent, dateKey: string) => {
-    if (!onMoveEvent) return;
     dragStartPosRef.current = { x: e.clientX, y: e.clientY };
     isDraggingRef.current = false;
 
@@ -193,7 +187,8 @@ export function WeekView({
 
     const pendingDrag = {
       eventId: event.id,
-      dateKey,
+      originDateKey: dateKey,
+      currentDateKey: dateKey,
       startY: y,
       currentY: y,
       originalMin: startMin,
@@ -206,11 +201,13 @@ export function WeekView({
       const dx = me.clientX - (dragStartPosRef.current?.x ?? 0);
       const dy = me.clientY - (dragStartPosRef.current?.y ?? 0);
 
-      if (!isDraggingRef.current && Math.sqrt(dx * dx + dy * dy) < 4) return;
+      if (!isDraggingRef.current && Math.sqrt(dx * dx + dy * dy) < 5) return;
 
       if (!isDraggingRef.current) {
         isDraggingRef.current = true;
         setDragState(pendingDrag);
+        document.body.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
         if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
         holdTimerRef.current = setTimeout(() => {
           setDragState(prev => prev ? { ...prev, currentSnap: fineSnapMinutes, isFineMode: true } : null);
@@ -218,6 +215,7 @@ export function WeekView({
         lastMoveTimeRef.current = Date.now();
       }
 
+      // Reset hold timer on significant movement
       const now = Date.now();
       if (now - lastMoveTimeRef.current > 50) {
         lastMoveTimeRef.current = now;
@@ -228,35 +226,73 @@ export function WeekView({
         setDragState(prev => prev ? { ...prev, currentSnap: snapMinutes, isFineMode: false } : null);
       }
 
-      for (const [, col2] of Object.entries(columnRefs.current)) {
+      // Find which column cursor is over
+      const newDateKey = findDateKeyAtX(me.clientX);
+      
+      // Calculate Y relative to current column
+      for (const [key, col2] of Object.entries(columnRefs.current)) {
         if (!col2) continue;
         const r = col2.getBoundingClientRect();
         if (me.clientX >= r.left && me.clientX <= r.right) {
           const newY = me.clientY - r.top;
-          setDragState(prev => prev ? { ...prev, currentY: newY } : null);
+          setDragState(prev => prev ? { 
+            ...prev, 
+            currentY: newY,
+            currentDateKey: key,
+          } : null);
           break;
         }
       }
     };
 
-    const handleMouseUp = async () => {
+    const handleMouseUp = () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
 
-      if (isDraggingRef.current && onMoveEvent) {
+      if (isDraggingRef.current) {
+        // Get final state and show confirmation
         setDragState(prev => {
           if (!prev) return null;
           const deltaY = prev.currentY - prev.startY;
           const deltaMin = (deltaY / HOUR_HEIGHT) * 60;
           const rawNewStart = prev.originalMin + deltaMin;
-          const snappedStart = snapTo(Math.max(gridStartMin, Math.min(gridEndMin - 30, rawNewStart)), prev.currentSnap);
+          const snappedNewStart = snapTo(Math.max(gridStartMin, Math.min(gridEndMin - 30, rawNewStart)), prev.currentSnap);
 
           const ev = events.find(e => e.id === prev.eventId);
           if (ev) {
-            const startTimeStr = minutesToStr(snappedStart);
-            const endTimeStr = minutesToStr(snappedStart + prev.durationMin);
-            onMoveEvent(prev.eventId, new Date(ev.start_time), startTimeStr, endTimeStr);
+            const oldStart = new Date(ev.start_time);
+            const oldEnd = new Date(ev.end_time);
+            const oldStartStr = format(oldStart, "HH:mm");
+            const oldEndStr = format(oldEnd, "HH:mm");
+            const oldDateStr = format(oldStart, "EEE, d MMM", { locale: uk });
+
+            // Find the new date from currentDateKey
+            const newDate = weekDates.find(d => format(d, "yyyy-MM-dd") === prev.currentDateKey) || oldStart;
+            
+            const newStartStr = minutesToStr(snappedNewStart);
+            const newEndStr = minutesToStr(snappedNewStart + prev.durationMin);
+
+            // Check if anything actually changed
+            const sameDay = prev.originDateKey === prev.currentDateKey;
+            const sameTime = newStartStr === oldStartStr;
+            
+            if (sameDay && sameTime) {
+              // No change, just cancel
+              return null;
+            }
+
+            setPendingMove({
+              event: ev,
+              newStartStr,
+              newEndStr,
+              newDate,
+              oldStartStr,
+              oldEndStr,
+              oldDateStr,
+            });
           }
           return null;
         });
@@ -268,9 +304,21 @@ export function WeekView({
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
-  }, [snapMinutes, fineSnapMinutes, onMoveEvent, events, snapTo, gridStartMin, gridEndMin]);
+  }, [snapMinutes, fineSnapMinutes, onMoveEvent, events, snapTo, gridStartMin, gridEndMin, findDateKeyAtX, weekDates]);
 
-  // Snap markers during in-day drag
+  // Confirm the move
+  const confirmMove = useCallback(async () => {
+    if (!pendingMove || !onMoveEvent) return;
+    await onMoveEvent(
+      pendingMove.event.id,
+      pendingMove.newDate,
+      pendingMove.newStartStr,
+      pendingMove.newEndStr
+    );
+    setPendingMove(null);
+  }, [pendingMove, onMoveEvent]);
+
+  // Snap markers during drag
   const dragSnapMarkers = useMemo(() => {
     if (!dragState) return [];
     const snap = dragState.currentSnap;
@@ -344,7 +392,10 @@ export function WeekView({
         </div>
 
         {/* Grid body */}
-        <div className="grid grid-cols-[52px_repeat(7,1fr)] overflow-y-auto max-h-[calc(100vh-300px)]">
+        <div
+          ref={scrollContainerRef}
+          className="grid grid-cols-[52px_repeat(7,1fr)] overflow-y-auto max-h-[calc(100vh-300px)]"
+        >
           {/* Time labels column */}
           <div className="relative" style={{ height: gridHeight }}>
             {hours.map((h) => (
@@ -365,8 +416,9 @@ export function WeekView({
             const dateKey = format(date, "yyyy-MM-dd");
             const isToday = isSameDay(date, today);
             const dayEvents = eventsByDate[dateKey] || [];
-            const isDragColumn = dragState?.dateKey === dateKey;
-            const isCrossDropTarget = crossDayDrop?.dateKey === dateKey;
+            const isDropTargetColumn = dragState && dragState.currentDateKey === dateKey;
+            const isOriginColumn = dragState && dragState.originDateKey === dateKey;
+            const isCrossDayTarget = isDropTargetColumn && !isOriginColumn;
 
             return (
               <div
@@ -374,60 +426,42 @@ export function WeekView({
                 ref={(el) => { columnRefs.current[dateKey] = el; }}
                 className={cn(
                   "relative border-l border-border/50",
-                  isToday && "bg-primary/[0.02]"
+                  isToday && "bg-primary/[0.02]",
+                  isCrossDayTarget && "bg-primary/[0.05]"
                 )}
                 style={{ height: gridHeight }}
-                onDragOver={(e) => e.preventDefault()}
-                onDragLeave={handleCrossDragLeave}
               >
                 {/* Hour rows */}
-                {hours.map((h) => {
-                  const isCrossDropHere = isCrossDropTarget && crossDayDrop?.hour === h;
-                  return (
+                {hours.map((h) => (
+                  <div
+                    key={h}
+                    className="absolute left-0 right-0 border-t border-border/30 group"
+                    style={{ top: (h - startHour) * HOUR_HEIGHT, height: HOUR_HEIGHT }}
+                  >
+                    {/* Half-hour line */}
                     <div
-                      key={h}
-                      className={cn(
-                        "absolute left-0 right-0 border-t border-border/30 group transition-colors",
-                        isCrossDropHere && "bg-primary/10"
-                      )}
-                      style={{ top: (h - startHour) * HOUR_HEIGHT, height: HOUR_HEIGHT }}
-                      onDrop={(e) => handleCrossDrop(e, date, h)}
-                      onDragOver={(e) => handleCrossDragOver(e, dateKey, h)}
-                    >
-                      {/* Half-hour line */}
-                      <div
-                        className="absolute left-0 right-0 border-t border-border/15"
-                        style={{ top: HOUR_HEIGHT / 2 }}
-                      />
+                      className="absolute left-0 right-0 border-t border-border/15"
+                      style={{ top: HOUR_HEIGHT / 2 }}
+                    />
 
-                      {/* Cross-day drop insertion marker */}
-                      {isCrossDropHere && (
-                        <div className="absolute inset-x-1 top-1 bottom-1 rounded-md border-2 border-dashed border-primary/50 bg-primary/5 flex items-center justify-center z-20 pointer-events-none animate-scale-in">
-                          <span className="text-[10px] font-semibold text-primary/70 font-mono">
-                            {String(h).padStart(2, "0")}:00
-                          </span>
-                        </div>
-                      )}
+                    {/* Add button on hover (only when not dragging) */}
+                    {onMoveEvent && !dragState && (
+                      <button
+                        className="absolute inset-x-0.5 top-0.5 bottom-0.5 rounded opacity-0 group-hover:opacity-100 transition-all duration-150 flex items-center justify-center bg-primary/[0.04] hover:bg-primary/[0.08] z-[5]"
+                        onClick={() => {
+                          const d = new Date(date);
+                          d.setHours(h, 0, 0, 0);
+                          onAddEvent(d);
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5 text-primary/40" />
+                      </button>
+                    )}
+                  </div>
+                ))}
 
-                      {/* Add button */}
-                      {onMoveEvent && !isCrossDropHere && (
-                        <button
-                          className="absolute inset-x-0.5 top-0.5 bottom-0.5 rounded opacity-0 group-hover:opacity-100 transition-all duration-150 flex items-center justify-center bg-primary/[0.04] hover:bg-primary/[0.08] z-[5]"
-                          onClick={() => {
-                            const d = new Date(date);
-                            d.setHours(h, 0, 0, 0);
-                            onAddEvent(d);
-                          }}
-                        >
-                          <Plus className="h-3.5 w-3.5 text-primary/40" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* Drag snap overlay */}
-                {isDragColumn && dragState && (
+                {/* Drag snap overlay + ghost for target column */}
+                {isDropTargetColumn && dragState && (
                   <div className="absolute inset-0 z-20 pointer-events-none">
                     {dragSnapMarkers.map((marker) => {
                       const y = minToY(marker.min);
@@ -452,22 +486,32 @@ export function WeekView({
                       );
                     })}
 
-                    {/* Drop target ghost */}
+                    {/* Drop ghost preview */}
                     {snappedStart !== null && (
                       <div
-                        className="absolute left-0.5 right-0.5 rounded-md border-2 border-primary/40 bg-primary/8 transition-all duration-75 pointer-events-none"
+                        className="absolute left-0.5 right-0.5 rounded-lg border-2 border-dashed border-primary/50 bg-primary/10 transition-all duration-75 pointer-events-none"
                         style={{
                           top: minToY(snappedStart),
                           height: Math.max(20, minToY(snappedStart + dragState.durationMin) - minToY(snappedStart)),
                         }}
                       >
-                        <div className="flex items-center justify-center h-full">
+                        <div className="flex items-center justify-center h-full gap-1">
+                          <Clock className="h-3 w-3 text-primary/50" />
                           <span className="text-[10px] font-mono font-semibold text-primary/60">
                             {minutesToStr(snappedStart)} – {minutesToStr(snappedStart + dragState.durationMin)}
                           </span>
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Cross-day column highlight header */}
+                {isCrossDayTarget && (
+                  <div className="absolute top-0 left-0 right-0 h-6 bg-primary/15 flex items-center justify-center z-30 pointer-events-none">
+                    <span className="text-[9px] font-semibold text-primary">
+                      {format(date, "EEE, d MMM", { locale: uk })}
+                    </span>
                   </div>
                 )}
 
@@ -500,8 +544,12 @@ export function WeekView({
                   const endTime = new Date(event.end_time);
                   const duration = (endTime.getTime() - startTime.getTime()) / 60000;
 
+                  // If this event is being dragged and cursor is on a different column, 
+                  // hide the original and show ghost on target column
+                  const isOnDifferentColumn = isDragging && dragState?.currentDateKey !== dateKey;
+
                   let eventTop = style.top;
-                  if (isDragging && snappedStart !== null) {
+                  if (isDragging && snappedStart !== null && dragState?.currentDateKey === dateKey) {
                     eventTop = minToY(snappedStart);
                   }
 
@@ -514,34 +562,18 @@ export function WeekView({
                         typeStyle.bg,
                         event.is_cancelled && "opacity-40 saturate-50",
                         isSelected && "ring-2 ring-primary ring-offset-1 ring-offset-card",
-                        isDragging && "shadow-xl z-30 scale-[1.02] ring-2 ring-primary/40 opacity-90",
+                        isDragging && !isOnDifferentColumn && "shadow-xl z-30 scale-[1.02] ring-2 ring-primary/40",
+                        isOnDifferentColumn && "opacity-30 scale-95",
                         onMoveEvent && "cursor-grab active:cursor-grabbing",
                         !onMoveEvent && "cursor-pointer",
                         !isDragging && "hover:shadow-md hover:z-20"
                       )}
                       style={{ top: eventTop, height: style.height }}
-                      draggable={!!onMoveEvent}
-                      onDragStart={(e) => handleCrossDragStart(e, event.id)}
-                      onMouseDown={(e) => {
-                        if (e.button !== 0) return;
-                        if ((e.target as HTMLElement).closest('[role="checkbox"]')) return;
-                        if (onMoveEvent) startInDayDrag(e, event, dateKey);
-                      }}
+                      onMouseDown={(e) => startDrag(e, event, dateKey)}
                       onClick={() => {
                         if (!isDraggingRef.current) onEventClick(event);
                       }}
                     >
-                      {/* Drag grip indicator */}
-                      {onMoveEvent && (
-                        <div className="absolute top-0 left-0 right-0 h-3 flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity pointer-events-none">
-                          <div className="flex gap-[2px]">
-                            <div className="w-[3px] h-[3px] rounded-full bg-foreground/20" />
-                            <div className="w-[3px] h-[3px] rounded-full bg-foreground/20" />
-                            <div className="w-[3px] h-[3px] rounded-full bg-foreground/20" />
-                          </div>
-                        </div>
-                      )}
-
                       <div className="px-1.5 py-1 h-full flex flex-col">
                         <div className="flex items-start gap-1">
                           {onToggleSelect && (
@@ -589,7 +621,7 @@ export function WeekView({
                       </div>
 
                       {/* Floating drag time badge */}
-                      {isDragging && snappedStart !== null && (
+                      {isDragging && snappedStart !== null && !isOnDifferentColumn && (
                         <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
                           <div className="bg-primary text-primary-foreground text-[10px] font-mono font-bold px-2 py-1 rounded-md shadow-lg whitespace-nowrap flex items-center gap-1.5">
                             <Clock className="h-3 w-3 opacity-70" />
@@ -608,6 +640,41 @@ export function WeekView({
           })}
         </div>
       </div>
+
+      {/* Move confirmation dialog */}
+      <AlertDialog open={!!pendingMove} onOpenChange={(open) => { if (!open) setPendingMove(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Перемістити подію?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  <span className="font-semibold text-foreground">{pendingMove?.event.title}</span>
+                </p>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="rounded-md bg-muted px-2.5 py-1.5 font-mono text-xs">
+                    <div className="text-muted-foreground text-[10px] mb-0.5">Було</div>
+                    <div>{pendingMove?.oldDateStr}</div>
+                    <div className="font-semibold">{pendingMove?.oldStartStr} – {pendingMove?.oldEndStr}</div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="rounded-md bg-primary/10 border border-primary/20 px-2.5 py-1.5 font-mono text-xs">
+                    <div className="text-primary text-[10px] mb-0.5">Стане</div>
+                    <div>{pendingMove && format(pendingMove.newDate, "EEE, d MMM", { locale: uk })}</div>
+                    <div className="font-semibold text-primary">{pendingMove?.newStartStr} – {pendingMove?.newEndStr}</div>
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Скасувати</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmMove}>
+              Підтвердити
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
