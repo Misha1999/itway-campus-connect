@@ -6,7 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useLessonSlots } from "@/hooks/use-lesson-slots";
+import { useClassrooms } from "@/hooks/use-classrooms";
 import { LessonSlotsTab } from "@/components/campuses/LessonSlotsTab";
+import { ClassroomsTab } from "@/components/campuses/ClassroomsTab";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,6 +33,7 @@ import {
   Archive,
   Save,
   Clock,
+  DoorOpen,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -88,6 +91,14 @@ export default function CampusDetailPage() {
     toggleSlotActive,
     deleteSlot,
   } = useLessonSlots(id || "");
+
+  const {
+    classrooms,
+    loading: classroomsLoading,
+    createClassroom,
+    updateClassroom,
+    deleteClassroom,
+  } = useClassrooms(id || "");
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -315,6 +326,10 @@ export default function CampusDetailPage() {
             <Clock className="h-4 w-4 mr-2" />
             Уроки (Слоти)
           </TabsTrigger>
+          <TabsTrigger value="classrooms">
+            <DoorOpen className="h-4 w-4 mr-2" />
+            Аудиторії ({classrooms.length})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="info">
@@ -439,6 +454,16 @@ export default function CampusDetailPage() {
               />
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="classrooms">
+          <ClassroomsTab
+            classrooms={classrooms}
+            loading={classroomsLoading}
+            onCreate={createClassroom}
+            onUpdate={updateClassroom}
+            onDelete={deleteClassroom}
+          />
         </TabsContent>
 
         <TabsContent value="slots">
