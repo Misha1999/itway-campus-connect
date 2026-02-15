@@ -365,6 +365,216 @@ export function useSchedule(selectedGroupId?: string) {
     return true;
   };
 
+  // === BULK OPERATIONS ===
+
+  const bulkDelete = async (ids: string[]) => {
+    const { error } = await supabase
+      .from("schedule_events")
+      .delete()
+      .in("id", ids);
+    if (error) {
+      toast.error("Помилка масового видалення");
+      return false;
+    }
+    toast.success(`Видалено ${ids.length} подій`);
+    await fetchEvents();
+    return true;
+  };
+
+  const bulkCancel = async (ids: string[], reason: string) => {
+    const { error } = await supabase
+      .from("schedule_events")
+      .update({ is_cancelled: true, cancelled_reason: reason })
+      .in("id", ids);
+    if (error) {
+      toast.error("Помилка масового скасування");
+      return false;
+    }
+    toast.success(`Скасовано ${ids.length} подій`);
+    await fetchEvents();
+    return true;
+  };
+
+  const bulkRestore = async (ids: string[]) => {
+    const { error } = await supabase
+      .from("schedule_events")
+      .update({ is_cancelled: false, cancelled_reason: null })
+      .in("id", ids);
+    if (error) {
+      toast.error("Помилка масового відновлення");
+      return false;
+    }
+    toast.success(`Відновлено ${ids.length} подій`);
+    await fetchEvents();
+    return true;
+  };
+
+  const bulkUpdateTeacher = async (ids: string[], teacherId: string | null) => {
+    const { error } = await supabase
+      .from("schedule_events")
+      .update({ teacher_id: teacherId })
+      .in("id", ids);
+    if (error) {
+      toast.error("Помилка заміни викладача");
+      return false;
+    }
+    toast.success(`Оновлено викладача для ${ids.length} подій`);
+    await fetchEvents();
+    return true;
+  };
+
+  const bulkUpdateClassroom = async (ids: string[], classroomId: string | null) => {
+    const { error } = await supabase
+      .from("schedule_events")
+      .update({ classroom_id: classroomId })
+      .in("id", ids);
+    if (error) {
+      toast.error("Помилка заміни аудиторії");
+      return false;
+    }
+    toast.success(`Оновлено аудиторію для ${ids.length} подій`);
+    await fetchEvents();
+    return true;
+  };
+
+  const bulkUpdateEventType = async (ids: string[], eventType: EventType) => {
+    const { error } = await supabase
+      .from("schedule_events")
+      .update({ event_type: eventType })
+      .in("id", ids);
+    if (error) {
+      toast.error("Помилка зміни типу");
+      return false;
+    }
+    toast.success(`Оновлено тип для ${ids.length} подій`);
+    await fetchEvents();
+    return true;
+  };
+
+  const bulkUpdateOnlineLink = async (ids: string[], onlineLink: string) => {
+    const { error } = await supabase
+      .from("schedule_events")
+      .update({ online_link: onlineLink })
+      .in("id", ids);
+    if (error) {
+      toast.error("Помилка додавання посилання");
+      return false;
+    }
+    toast.success(`Додано посилання для ${ids.length} подій`);
+    await fetchEvents();
+    return true;
+  };
+
+  const bulkShiftDays = async (ids: string[], shiftDays: number) => {
+    // Fetch events to shift
+    const { data: eventsToShift, error: fetchErr } = await supabase
+      .from("schedule_events")
+      .select("id, start_time, end_time")
+      .in("id", ids);
+    if (fetchErr || !eventsToShift) {
+      toast.error("Помилка зміщення розкладу");
+      return false;
+    }
+    const shiftMs = shiftDays * 24 * 60 * 60 * 1000;
+    for (const ev of eventsToShift) {
+      const newStart = new Date(new Date(ev.start_time).getTime() + shiftMs).toISOString();
+      const newEnd = new Date(new Date(ev.end_time).getTime() + shiftMs).toISOString();
+      await supabase.from("schedule_events").update({ start_time: newStart, end_time: newEnd }).eq("id", ev.id);
+    }
+    toast.success(`Зміщено ${ids.length} подій на ${shiftDays} дн.`);
+    await fetchEvents();
+    return true;
+  };
+
+  const bulkShiftTime = async (ids: string[], shiftMinutes: number) => {
+    const { data: eventsToShift, error: fetchErr } = await supabase
+      .from("schedule_events")
+      .select("id, start_time, end_time")
+      .in("id", ids);
+    if (fetchErr || !eventsToShift) {
+      toast.error("Помилка зміщення часу");
+      return false;
+    }
+    const shiftMs = shiftMinutes * 60 * 1000;
+    for (const ev of eventsToShift) {
+      const newStart = new Date(new Date(ev.start_time).getTime() + shiftMs).toISOString();
+      const newEnd = new Date(new Date(ev.end_time).getTime() + shiftMs).toISOString();
+      await supabase.from("schedule_events").update({ start_time: newStart, end_time: newEnd }).eq("id", ev.id);
+    }
+    toast.success(`Зміщено час ${ids.length} подій на ${shiftMinutes} хв`);
+    await fetchEvents();
+    return true;
+  };
+
+  const bulkDuplicateShifted = async (ids: string[], shiftDays: number) => {
+    const { data: eventsToClone, error: fetchErr } = await supabase
+      .from("schedule_events")
+      .select("*")
+      .in("id", ids);
+    if (fetchErr || !eventsToClone) {
+      toast.error("Помилка дублювання");
+      return false;
+    }
+    const shiftMs = shiftDays * 24 * 60 * 60 * 1000;
+    const rows = eventsToClone.map((ev: any) => ({
+      title: ev.title,
+      description: ev.description,
+      start_time: new Date(new Date(ev.start_time).getTime() + shiftMs).toISOString(),
+      end_time: new Date(new Date(ev.end_time).getTime() + shiftMs).toISOString(),
+      event_type: ev.event_type,
+      is_cancelled: false,
+      cancelled_reason: null,
+      online_link: ev.online_link,
+      group_id: ev.group_id,
+      teacher_id: ev.teacher_id,
+      room_id: ev.room_id,
+      classroom_id: ev.classroom_id,
+      lesson_id: ev.lesson_id,
+    }));
+    const { error } = await supabase.from("schedule_events").insert(rows);
+    if (error) {
+      toast.error("Помилка дублювання подій");
+      return false;
+    }
+    toast.success(`Продубльовано ${ids.length} подій`);
+    await fetchEvents();
+    return true;
+  };
+
+  const bulkCopyToGroup = async (ids: string[], targetGroupId: string) => {
+    const { data: eventsToClone, error: fetchErr } = await supabase
+      .from("schedule_events")
+      .select("*")
+      .in("id", ids);
+    if (fetchErr || !eventsToClone) {
+      toast.error("Помилка копіювання");
+      return false;
+    }
+    const rows = eventsToClone.map((ev: any) => ({
+      title: ev.title,
+      description: ev.description,
+      start_time: ev.start_time,
+      end_time: ev.end_time,
+      event_type: ev.event_type,
+      is_cancelled: false,
+      cancelled_reason: null,
+      online_link: ev.online_link,
+      group_id: targetGroupId,
+      teacher_id: ev.teacher_id,
+      room_id: ev.room_id,
+      classroom_id: ev.classroom_id,
+      lesson_id: ev.lesson_id,
+    }));
+    const { error } = await supabase.from("schedule_events").insert(rows);
+    if (error) {
+      toast.error("Помилка копіювання розкладу");
+      return false;
+    }
+    toast.success(`Скопійовано ${ids.length} подій до іншої групи`);
+    await fetchEvents();
+    return true;
+  };
+
   useEffect(() => {
     fetchCampuses();
     fetchGroups();
@@ -393,5 +603,16 @@ export function useSchedule(selectedGroupId?: string) {
     cancelEvent,
     restoreEvent,
     checkConflicts,
+    bulkDelete,
+    bulkCancel,
+    bulkRestore,
+    bulkUpdateTeacher,
+    bulkUpdateClassroom,
+    bulkUpdateEventType,
+    bulkUpdateOnlineLink,
+    bulkShiftDays,
+    bulkShiftTime,
+    bulkDuplicateShifted,
+    bulkCopyToGroup,
   };
 }
