@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { format, startOfWeek, addDays, isSameDay } from "date-fns";
 import { uk } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, MapPin, Video, Plus, GripVertical } from "lucide-react";
+import { TimelineDropZone } from "./TimelineDropZone";
 import type { ScheduleEvent } from "@/hooks/use-schedule";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -20,12 +21,6 @@ const eventTypeColors: Record<EventType, string> = {
   project: "border-l-chart-4",
   other: "border-l-muted-foreground",
 };
-
-// Timeline constants
-const TIMELINE_START_HOUR = 8;
-const TIMELINE_END_HOUR = 21;
-const TIMELINE_SLOT_HEIGHT = 28; // px per 30 min
-const TIMELINE_SLOTS = (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * 2; // 30-min slots
 
 interface WeekViewProps {
   events: ScheduleEvent[];
@@ -47,8 +42,7 @@ export function WeekView({
   const [weekOffset, setWeekOffset] = useState(0);
   const [draggedEventId, setDraggedEventId] = useState<string | null>(null);
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
-  const [dropTimeSlot, setDropTimeSlot] = useState<number | null>(null); // index of 30-min slot
-  const timelineRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [dropTimeMinutes, setDropTimeMinutes] = useState<Record<string, number | null>>({});
 
   const weekDates = useMemo(() => {
     const today = new Date();
@@ -77,18 +71,11 @@ export function WeekView({
 
   // Get dragged event duration in minutes
   const draggedEventDuration = useMemo(() => {
-    if (!draggedEventId) return 90; // default 1.5h
+    if (!draggedEventId) return 90;
     const event = events.find((e) => e.id === draggedEventId);
     if (!event) return 90;
     return (new Date(event.end_time).getTime() - new Date(event.start_time).getTime()) / 60000;
   }, [draggedEventId, events]);
-
-  const slotToTime = useCallback((slotIndex: number) => {
-    const totalMinutes = TIMELINE_START_HOUR * 60 + slotIndex * 30;
-    const h = Math.floor(totalMinutes / 60);
-    const m = totalMinutes % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  }, []);
 
   const handleDragStart = (e: React.DragEvent, eventId: string) => {
     e.dataTransfer.setData("text/plain", eventId);
@@ -100,42 +87,35 @@ export function WeekView({
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDragOverDate(dateKey);
-
-    // Calculate time slot from mouse position relative to timeline
-    const timelineEl = timelineRefs.current[dateKey];
-    if (timelineEl) {
-      const rect = timelineEl.getBoundingClientRect();
-      const y = e.clientY - rect.top;
-      const slotIndex = Math.max(0, Math.min(TIMELINE_SLOTS - 1, Math.floor(y / TIMELINE_SLOT_HEIGHT)));
-      setDropTimeSlot(slotIndex);
-    }
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    // Only reset if truly leaving the column
+  const handleDragLeave = (e: React.DragEvent, dateKey: string) => {
     const relatedTarget = e.relatedTarget as HTMLElement | null;
     const currentTarget = e.currentTarget as HTMLElement;
     if (!relatedTarget || !currentTarget.contains(relatedTarget)) {
       setDragOverDate(null);
-      setDropTimeSlot(null);
+      setDropTimeMinutes(prev => ({ ...prev, [dateKey]: null }));
     }
   };
 
   const handleDrop = async (e: React.DragEvent, date: Date) => {
     e.preventDefault();
     const eventId = e.dataTransfer.getData("text/plain");
-    const currentSlot = dropTimeSlot;
+    const dateKey = format(date, "yyyy-MM-dd");
+    const currentDropMinutes = dropTimeMinutes[dateKey];
+    
     setDraggedEventId(null);
     setDragOverDate(null);
-    setDropTimeSlot(null);
+    setDropTimeMinutes({});
 
     if (eventId && onMoveEvent) {
-      if (currentSlot !== null) {
-        const startTimeStr = slotToTime(currentSlot);
-        const totalStartMin = TIMELINE_START_HOUR * 60 + currentSlot * 30;
-        const totalEndMin = totalStartMin + draggedEventDuration;
-        const endH = Math.floor(totalEndMin / 60) % 24;
-        const endM = totalEndMin % 60;
+      if (currentDropMinutes !== null && currentDropMinutes !== undefined) {
+        const startH = Math.floor(currentDropMinutes / 60);
+        const startM = currentDropMinutes % 60;
+        const startTimeStr = `${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")}`;
+        const endMin = currentDropMinutes + draggedEventDuration;
+        const endH = Math.floor(endMin / 60) % 24;
+        const endM = endMin % 60;
         const endTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
         await onMoveEvent(eventId, date, startTimeStr, endTimeStr);
       } else {
@@ -145,6 +125,10 @@ export function WeekView({
   };
 
   const isDragging = draggedEventId !== null;
+
+  const handleDropTimeChange = useCallback((dateKey: string, minutes: number | null) => {
+    setDropTimeMinutes(prev => ({ ...prev, [dateKey]: minutes }));
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -182,7 +166,7 @@ export function WeekView({
                 isDragTarget && "ring-2 ring-primary/30"
               )}
               onDragOver={(e) => handleDragOver(e, dateKey)}
-              onDragLeave={handleDragLeave}
+              onDragLeave={(e) => handleDragLeave(e, dateKey)}
               onDrop={(e) => handleDrop(e, date)}
             >
               {/* Day header */}
@@ -198,54 +182,13 @@ export function WeekView({
               </div>
 
               {/* Timeline overlay during drag */}
-              {isDragging && isDragTarget && (
-                <div
-                  ref={(el) => { timelineRefs.current[dateKey] = el; }}
-                  className="absolute left-0 right-0 z-20 bg-background/95 border rounded-lg shadow-lg overflow-hidden"
-                  style={{ top: 60 }}
-                >
-                  {Array.from({ length: TIMELINE_SLOTS }, (_, i) => {
-                    const isHourMark = i % 2 === 0;
-                    const isTarget = dropTimeSlot === i;
-                    const durationSlots = Math.ceil(draggedEventDuration / 30);
-                    const isInRange = dropTimeSlot !== null && i >= dropTimeSlot && i < dropTimeSlot + durationSlots;
-
-                    return (
-                      <div
-                        key={i}
-                        className={cn(
-                          "flex items-center px-1 border-b border-border/30 transition-colors",
-                          isHourMark ? "border-border/60" : "",
-                          isInRange ? "bg-primary/20" : "hover:bg-accent/50",
-                          isTarget && "bg-primary/30"
-                        )}
-                        style={{ height: TIMELINE_SLOT_HEIGHT }}
-                      >
-                        {isHourMark && (
-                          <span className="text-[10px] text-muted-foreground font-mono w-full">
-                            {slotToTime(i)}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {/* Drop time indicator */}
-                  {dropTimeSlot !== null && (
-                    <div className="absolute top-0 left-0 right-0 flex items-center justify-center pointer-events-none"
-                      style={{ top: dropTimeSlot * TIMELINE_SLOT_HEIGHT - 10 }}
-                    >
-                      <span className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full font-medium shadow">
-                        {slotToTime(dropTimeSlot)} – {(() => {
-                          const endMin = TIMELINE_START_HOUR * 60 + dropTimeSlot * 30 + draggedEventDuration;
-                          const h = Math.floor(endMin / 60) % 24;
-                          const m = endMin % 60;
-                          return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-                        })()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
+              <TimelineDropZone
+                date={date}
+                eventDurationMinutes={draggedEventDuration}
+                dropTimeMinutes={dropTimeMinutes[dateKey] ?? null}
+                onDropTimeChange={(min) => handleDropTimeChange(dateKey, min)}
+                visible={isDragging && isDragTarget}
+              />
 
               {/* Event cards */}
               <div className="space-y-2">

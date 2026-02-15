@@ -64,6 +64,12 @@ interface StudyProgram {
   campus_id: string;
 }
 
+interface EnrollmentCohort {
+  id: string;
+  name: string;
+  campus_id: string;
+}
+
 interface LessonSlot {
   id: string;
   campus_id: string;
@@ -125,6 +131,7 @@ export function EventFormDialog({
   // Core fields
   const [campusId, setCampusId] = useState("");
   const [studyProgramId, setStudyProgramId] = useState("");
+  const [cohortId, setCohortId] = useState("");
   const [groupId, setGroupId] = useState("");
   const [eventType, setEventType] = useState<EventType>("lesson");
   const [teacherId, setTeacherId] = useState("");
@@ -153,6 +160,7 @@ export function EventFormDialog({
 
   // Data from DB
   const [studyPrograms, setStudyPrograms] = useState<StudyProgram[]>([]);
+  const [enrollmentCohorts, setEnrollmentCohorts] = useState<EnrollmentCohort[]>([]);
   const [lessonSlots, setLessonSlots] = useState<LessonSlot[]>([]);
   const [courseLessons, setCourseLessons] = useState<CourseLesson[]>([]);
 
@@ -164,16 +172,16 @@ export function EventFormDialog({
 
   const isEditing = !!event;
 
-  // Fetch study programs
+  // Fetch study programs and cohorts
   useEffect(() => {
     if (!open) return;
     (async () => {
-      const { data } = await supabase
-        .from("study_programs")
-        .select("id, name, campus_id")
-        .eq("is_active", true)
-        .order("name");
-      setStudyPrograms((data as StudyProgram[]) || []);
+      const [{ data: progData }, { data: cohortData }] = await Promise.all([
+        supabase.from("study_programs").select("id, name, campus_id").eq("is_active", true).order("name"),
+        supabase.from("enrollment_cohorts").select("id, name, campus_id").eq("is_active", true).order("name"),
+      ]);
+      setStudyPrograms((progData as StudyProgram[]) || []);
+      setEnrollmentCohorts((cohortData as EnrollmentCohort[]) || []);
     })();
   }, [open]);
 
@@ -229,12 +237,17 @@ export function EventFormDialog({
     ? studyPrograms.filter(p => p.campus_id === campusId)
     : studyPrograms;
 
+  const filteredCohorts = campusId
+    ? enrollmentCohorts.filter(c => c.campus_id === campusId)
+    : enrollmentCohorts;
+
   const filteredGroups = useMemo(() => {
     let filtered = groups;
     if (campusId) filtered = filtered.filter(g => g.campus_id === campusId);
-    // further filter by study_program if we can get group.study_program_id
+    if (cohortId) filtered = filtered.filter(g => g.enrollment_cohort_id === cohortId);
+    if (studyProgramId) filtered = filtered.filter(g => g.study_program_id === studyProgramId);
     return filtered;
-  }, [groups, campusId]);
+  }, [groups, campusId, cohortId, studyProgramId]);
 
   const filteredClassrooms = campusId
     ? classrooms.filter(c => c.campus_id === campusId)
@@ -243,6 +256,16 @@ export function EventFormDialog({
   // Slots filtered by day of week of selected date and optionally by study program
   const filteredSlots = useMemo(() => {
     if (!campusId) return [];
+    
+    // In date range mode, show all slots (any day) since we repeat across multiple days
+    if (isDateRange) {
+      return lessonSlots.filter(s => {
+        if (s.is_global) return true;
+        if (studyProgramId && s.study_program_id === studyProgramId) return true;
+        return false;
+      });
+    }
+    
     const dayOfWeek = getDay(dateFrom); // JS: 0=Sun, 1=Mon...
     // Convert JS day to our slot day_of_week (0=Mon...6=Sun)
     const slotDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
@@ -252,7 +275,7 @@ export function EventFormDialog({
       if (studyProgramId && s.study_program_id === studyProgramId) return true;
       return false;
     });
-  }, [lessonSlots, dateFrom, campusId, studyProgramId]);
+  }, [lessonSlots, dateFrom, campusId, studyProgramId, isDateRange]);
 
   // When slot selected, set time
   useEffect(() => {
@@ -312,6 +335,7 @@ export function EventFormDialog({
     } else {
       setCampusId(campuses[0]?.id || "");
       setStudyProgramId("");
+      setCohortId("");
       setGroupId("");
       setTeacherId("");
       setClassroomId("");
@@ -532,11 +556,11 @@ export function EventFormDialog({
 
             <Separator />
 
-            {/* === SECTION: Campus & Program === */}
+            {/* === SECTION: Campus & Program & Cohort === */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Філія *</Label>
-                <Select value={campusId} onValueChange={(v) => { setCampusId(v); setStudyProgramId(""); setGroupId(""); setSelectedSlotId(""); }}>
+                <Select value={campusId} onValueChange={(v) => { setCampusId(v); setStudyProgramId(""); setCohortId(""); setGroupId(""); setSelectedSlotId(""); }}>
                   <SelectTrigger><SelectValue placeholder="Оберіть філію" /></SelectTrigger>
                   <SelectContent>
                     {campuses.map(c => (
@@ -547,7 +571,7 @@ export function EventFormDialog({
               </div>
               <div className="space-y-2">
                 <Label>Програма навчання</Label>
-                <Select value={studyProgramId || "__none__"} onValueChange={(v) => setStudyProgramId(v === "__none__" ? "" : v)}>
+                <Select value={studyProgramId || "__none__"} onValueChange={(v) => { setStudyProgramId(v === "__none__" ? "" : v); setGroupId(""); }}>
                   <SelectTrigger><SelectValue placeholder="Оберіть програму" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Всі програми</SelectItem>
@@ -557,6 +581,20 @@ export function EventFormDialog({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Enrollment Cohort */}
+            <div className="space-y-2">
+              <Label>Потік</Label>
+              <Select value={cohortId || "__none__"} onValueChange={(v) => { setCohortId(v === "__none__" ? "" : v); setGroupId(""); }}>
+                <SelectTrigger><SelectValue placeholder="Оберіть потік" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Всі потоки</SelectItem>
+                  {filteredCohorts.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* === SECTION: Group & Teacher === */}

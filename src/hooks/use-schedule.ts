@@ -30,6 +30,8 @@ export interface Group {
   id: string;
   name: string;
   campus_id: string;
+  study_program_id: string | null;
+  enrollment_cohort_id: string | null;
 }
 
 export interface Room {
@@ -89,10 +91,10 @@ export function useSchedule(selectedGroupId?: string) {
   const fetchGroups = useCallback(async () => {
     const { data, error } = await supabase
       .from("groups")
-      .select("id, name, campus_id")
+      .select("id, name, campus_id, study_program_id, enrollment_cohort_id")
       .eq("is_active", true)
       .order("name");
-    if (!error) setGroups(data || []);
+    if (!error) setGroups((data as Group[]) || []);
   }, []);
 
   const fetchRooms = useCallback(async () => {
