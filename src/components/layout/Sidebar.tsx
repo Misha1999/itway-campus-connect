@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/use-user-role";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -52,6 +53,7 @@ export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { roles, loading: rolesLoading } = useUserRole();
 
   const handleLogout = async () => {
     try {
@@ -95,7 +97,13 @@ export function Sidebar({ className }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {navItems.filter((item) => {
+          if (!item.roles) return true;
+          if (rolesLoading) return false;
+          // admin_network sees everything
+          if (roles.includes("admin_network")) return true;
+          return item.roles.some((r) => roles.includes(r as any));
+        }).map((item) => {
           const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + "/");
           return (
             <Link

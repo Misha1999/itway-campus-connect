@@ -1246,6 +1246,45 @@ export type Database = {
           },
         ]
       }
+      schedule_deletion_requests: {
+        Row: {
+          created_at: string
+          event_ids: string[]
+          event_snapshot: Json
+          id: string
+          reason: string
+          requested_by: string
+          review_comment: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          event_ids: string[]
+          event_snapshot?: Json
+          id?: string
+          reason: string
+          requested_by: string
+          review_comment?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          event_ids?: string[]
+          event_snapshot?: Json
+          id?: string
+          reason?: string
+          requested_by?: string
+          review_comment?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       schedule_events: {
         Row: {
           cancelled_reason: string | null

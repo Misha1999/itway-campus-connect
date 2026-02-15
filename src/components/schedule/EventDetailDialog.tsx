@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Clock,
   MapPin,
@@ -35,7 +36,11 @@ import {
   RotateCcw,
   ExternalLink,
   Loader2,
+  ShieldAlert,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/use-user-role";
+import { toast } from "sonner";
 import type { ScheduleEvent } from "@/hooks/use-schedule";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -78,14 +83,56 @@ export function EventDetailDialog({
 }: EventDetailDialogProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showApprovalRequest, setShowApprovalRequest] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [approvalReason, setApprovalReason] = useState("");
   const [loading, setLoading] = useState(false);
+  const { isAdmin, isCampusAdmin, userId } = useUserRole();
 
   if (!event) return null;
 
   const startDate = new Date(event.start_time);
   const endDate = new Date(event.end_time);
   const isOnline = !event.room_id && !event.classroom_id;
+  const isPastEvent = endDate < new Date();
+  const needsApproval = isPastEvent && isCampusAdmin && !isAdmin;
+
+  const handleDeleteClick = () => {
+    if (needsApproval) {
+      setShowApprovalRequest(true);
+    } else {
+      setShowDeleteConfirm(true);
+    }
+  };
+
+  const handleRequestApproval = async () => {
+    if (!approvalReason.trim() || !userId) return;
+    setLoading(true);
+    const { error } = await supabase
+      .from("schedule_deletion_requests")
+      .insert({
+        requested_by: userId,
+        reason: approvalReason,
+        event_ids: [event.id],
+        event_snapshot: [{
+          id: event.id,
+          title: event.title,
+          start_time: event.start_time,
+          end_time: event.end_time,
+          group_name: event.group_name,
+          teacher_name: event.teacher_name,
+        }],
+      });
+    setLoading(false);
+    if (error) {
+      toast.error("Помилка створення запиту");
+      return;
+    }
+    toast.success("Запит на видалення відправлено адміністратору мережі");
+    setShowApprovalRequest(false);
+    setApprovalReason("");
+    onOpenChange(false);
+  };
 
   const handleDelete = async () => {
     setLoading(true);
@@ -252,9 +299,10 @@ export function EventDetailDialog({
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => setShowDeleteConfirm(true)}
+                onClick={handleDeleteClick}
+                title={needsApproval ? "Потребує схвалення" : undefined}
               >
-                <Trash2 className="h-4 w-4" />
+                {needsApproval ? <ShieldAlert className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
               </Button>
             </div>
             <Button size="sm" onClick={onEdit}>
@@ -312,6 +360,51 @@ export function EventDetailDialog({
               className="bg-warning text-warning-foreground hover:bg-warning/90"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Скасувати подію"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Approval Request for past event deletion */}
+      <AlertDialog open={showApprovalRequest} onOpenChange={setShowApprovalRequest}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-warning" />
+              Запит на видалення
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Ця подія вже відбулась. Для видалення потрібне схвалення адміністратора мережі.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4 space-y-3">
+            <div className="p-3 bg-muted rounded-lg text-sm">
+              <p className="font-medium">{event.title}</p>
+              <p className="text-muted-foreground">
+                {format(startDate, "d MMMM yyyy, HH:mm", { locale: uk })}
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="approvalReason">Причина видалення</Label>
+              <Textarea
+                id="approvalReason"
+                value={approvalReason}
+                onChange={(e) => setApprovalReason(e.target.value)}
+                placeholder="Опишіть причину видалення минулої події..."
+                className="mt-2"
+                rows={3}
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setApprovalReason("")}>
+              Скасувати
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRequestApproval}
+              disabled={!approvalReason.trim() || loading}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Надіслати запит"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
