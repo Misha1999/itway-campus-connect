@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { format } from "date-fns";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -310,19 +311,30 @@ export default function SchedulePage() {
                 onAddEvent={handleAddEvent}
                 selectedEventIds={selectedEventIds}
                 onToggleSelect={toggleEventSelection}
-                onMoveEvent={async (eventId, newDate) => {
+                onMoveEvent={async (eventId, newDate, newStartTime, newEndTime) => {
                   const event = events.find((e) => e.id === eventId);
                   if (!event) return;
-                  const oldStart = new Date(event.start_time);
-                  const oldEnd = new Date(event.end_time);
-                  const diffMs = oldEnd.getTime() - oldStart.getTime();
-                  const newStart = new Date(newDate);
-                  newStart.setHours(oldStart.getHours(), oldStart.getMinutes());
-                  const newEnd = new Date(newStart.getTime() + diffMs);
-                  await updateEvent(eventId, {
-                    start_time: newStart.toISOString(),
-                    end_time: newEnd.toISOString(),
-                  });
+                  const dateStr = format(newDate, "yyyy-MM-dd");
+
+                  if (newStartTime && newEndTime) {
+                    // Precise time from timeline drop
+                    await updateEvent(eventId, {
+                      start_time: new Date(`${dateStr}T${newStartTime}:00`).toISOString(),
+                      end_time: new Date(`${dateStr}T${newEndTime}:00`).toISOString(),
+                    });
+                  } else {
+                    // Keep original time, change date only
+                    const oldStart = new Date(event.start_time);
+                    const oldEnd = new Date(event.end_time);
+                    const diffMs = oldEnd.getTime() - oldStart.getTime();
+                    const newStart = new Date(newDate);
+                    newStart.setHours(oldStart.getHours(), oldStart.getMinutes());
+                    const newEnd = new Date(newStart.getTime() + diffMs);
+                    await updateEvent(eventId, {
+                      start_time: newStart.toISOString(),
+                      end_time: newEnd.toISOString(),
+                    });
+                  }
                 }}
               />
             </TabsContent>
