@@ -30,7 +30,6 @@ interface StudyProgram {
 
 interface LessonEntry {
   id: string;
-  name: string;
   start_time: string;
   duration_minutes: number;
 }
@@ -49,7 +48,6 @@ const DURATION_PRESETS = [45, 60, 80, 90, 120];
 function createEntry(): LessonEntry {
   return {
     id: crypto.randomUUID(),
-    name: "",
     start_time: "09:00",
     duration_minutes: 80,
   };
@@ -67,6 +65,7 @@ export function LessonSlotDialog({
   const [isGlobal, setIsGlobal] = useState(true);
   const [studyProgramId, setStudyProgramId] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(true);
+  const [slotName, setSlotName] = useState("");
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [lessons, setLessons] = useState<LessonEntry[]>([createEntry()]);
 
@@ -78,11 +77,11 @@ export function LessonSlotDialog({
       setIsGlobal(slot.is_global);
       setStudyProgramId(slot.study_program_id);
       setIsActive(slot.is_active);
+      setSlotName(slot.name || "");
       setSelectedDays([slot.day_of_week]);
       setLessons([
         {
           id: "edit",
-          name: slot.name || "",
           start_time: slot.start_time.slice(0, 5),
           duration_minutes: slot.duration_minutes,
         },
@@ -91,6 +90,7 @@ export function LessonSlotDialog({
       setIsGlobal(true);
       setStudyProgramId(null);
       setIsActive(true);
+      setSlotName("");
       setSelectedDays([]);
       setLessons([createEntry()]);
     }
@@ -112,7 +112,7 @@ export function LessonSlotDialog({
       ...lessons,
       {
         id: crypto.randomUUID(),
-        name: "",
+        
         start_time: `${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")}`,
         duration_minutes: last.duration_minutes,
       },
@@ -135,7 +135,7 @@ export function LessonSlotDialog({
     if (isEdit && slot) {
       const lesson = lessons[0];
       const success = await onUpdate(slot.id, {
-        name: lesson.name,
+        name: slotName,
         is_global: isGlobal,
         study_program_id: isGlobal ? null : studyProgramId,
         day_of_week: selectedDays[0],
@@ -153,7 +153,7 @@ export function LessonSlotDialog({
     for (const day of selectedDays) {
       for (const lesson of lessons) {
         const success = await onSave({
-          name: lesson.name,
+          name: slotName,
           is_global: isGlobal,
           study_program_id: isGlobal ? null : studyProgramId,
           day_of_week: day,
@@ -246,17 +246,22 @@ export function LessonSlotDialog({
             </div>
           </div>
 
+          {/* Slot name */}
+          <div className="space-y-2">
+            <Label>Назва слоту (необов'язково)</Label>
+            <Input
+              value={slotName}
+              onChange={(e) => setSlotName(e.target.value)}
+              placeholder="напр. Будні — Всі програми"
+            />
+            <p className="text-xs text-muted-foreground">
+              Допоможе розрізняти групи слотів, напр. «Будні Всі програми», «Вихідні Всі програми»
+            </p>
+          </div>
+
           {/* Lessons list */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Уроки</Label>
-              {!isEdit && (
-                <Button type="button" variant="outline" size="sm" onClick={addLesson}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  Додати урок
-                </Button>
-              )}
-            </div>
+            <Label>Уроки</Label>
 
             {lessons.map((lesson, idx) => (
               <div
@@ -280,15 +285,6 @@ export function LessonSlotDialog({
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label className="text-xs">Назва (необов'язково)</Label>
-                  <Input
-                    value={lesson.name}
-                    onChange={(e) => updateLesson(lesson.id, "name", e.target.value)}
-                    placeholder="напр. 1-й урок"
-                  />
-                </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label className="text-xs">Час початку *</Label>
@@ -310,6 +306,13 @@ export function LessonSlotDialog({
                 </div>
               </div>
             ))}
+
+            {!isEdit && (
+              <Button type="button" variant="outline" size="sm" className="w-full" onClick={addLesson}>
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Додати урок
+              </Button>
+            )}
           </div>
 
           {/* Active toggle */}
