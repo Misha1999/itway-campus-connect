@@ -315,6 +315,7 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          is_universal: boolean
           name: string
           notes: string | null
           updated_at: string
@@ -325,6 +326,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          is_universal?: boolean
           name: string
           notes?: string | null
           updated_at?: string
@@ -335,6 +337,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          is_universal?: boolean
           name?: string
           notes?: string | null
           updated_at?: string
@@ -1246,6 +1249,7 @@ export type Database = {
       schedule_events: {
         Row: {
           cancelled_reason: string | null
+          classroom_id: string | null
           created_at: string
           description: string | null
           end_time: string
@@ -1263,6 +1267,7 @@ export type Database = {
         }
         Insert: {
           cancelled_reason?: string | null
+          classroom_id?: string | null
           created_at?: string
           description?: string | null
           end_time: string
@@ -1280,6 +1285,7 @@ export type Database = {
         }
         Update: {
           cancelled_reason?: string | null
+          classroom_id?: string | null
           created_at?: string
           description?: string | null
           end_time?: string
@@ -1296,6 +1302,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "schedule_events_classroom_id_fkey"
+            columns: ["classroom_id"]
+            isOneToOne: false
+            referencedRelation: "classrooms"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "schedule_events_group_id_fkey"
             columns: ["group_id"]
@@ -1442,6 +1455,42 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_schedule_conflicts: {
+        Args: {
+          _classroom_id: string
+          _end_time: string
+          _event_id: string
+          _group_id: string
+          _start_time: string
+          _teacher_id: string
+        }
+        Returns: Json
+      }
+      get_available_classrooms: {
+        Args: {
+          _campus_id: string
+          _end_time: string
+          _exclude_event_id?: string
+          _start_time: string
+        }
+        Returns: {
+          campus_id: string
+          capacity: number | null
+          created_at: string
+          id: string
+          is_active: boolean
+          is_universal: boolean
+          name: string
+          notes: string | null
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "classrooms"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_coin_balance: { Args: { _student_id: string }; Returns: number }
       has_campus_access: {
         Args: { _campus_id: string; _user_id: string }

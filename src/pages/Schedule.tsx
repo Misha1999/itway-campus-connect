@@ -22,8 +22,10 @@ import {
 
 export default function SchedulePage() {
   const [view, setView] = useState("week");
+  const [selectedCampusId, setSelectedCampusId] = useState("all");
   const [selectedGroupId, setSelectedGroupId] = useState("all");
   const [selectedTeacherId, setSelectedTeacherId] = useState("all");
+  const [selectedClassroomId, setSelectedClassroomId] = useState("all");
   const [showEventForm, setShowEventForm] = useState(false);
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
@@ -33,19 +35,38 @@ export default function SchedulePage() {
     events,
     groups,
     rooms,
+    classrooms,
     teachers,
+    campuses,
     loading,
     createEvent,
     updateEvent,
     deleteEvent,
     cancelEvent,
     restoreEvent,
+    checkConflicts,
   } = useSchedule(selectedGroupId === "all" ? undefined : selectedGroupId);
 
-  // Filter events by teacher on client side
-  const filteredEvents = selectedTeacherId === "all"
-    ? events
-    : events.filter((e) => e.teacher_id === selectedTeacherId);
+  // Filter groups by campus
+  const filteredGroups = selectedCampusId === "all"
+    ? groups
+    : groups.filter((g) => g.campus_id === selectedCampusId);
+
+  // Filter classrooms by campus
+  const filteredClassrooms = selectedCampusId === "all"
+    ? classrooms
+    : classrooms.filter((c) => c.campus_id === selectedCampusId);
+
+  // Filter events
+  const filteredEvents = events.filter((e) => {
+    if (selectedTeacherId !== "all" && e.teacher_id !== selectedTeacherId) return false;
+    if (selectedClassroomId !== "all" && e.classroom_id !== selectedClassroomId) return false;
+    if (selectedCampusId !== "all") {
+      const group = groups.find((g) => g.id === e.group_id);
+      if (group && group.campus_id !== selectedCampusId) return false;
+    }
+    return true;
+  });
 
   const handleEventClick = (event: ScheduleEvent) => {
     setSelectedEvent(event);
@@ -72,16 +93,25 @@ export default function SchedulePage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title="Розклад" description="Календар занять та подій">
+        <Select value={selectedCampusId} onValueChange={(v) => { setSelectedCampusId(v); setSelectedGroupId("all"); setSelectedClassroomId("all"); }}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Філія" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Всі філії</SelectItem>
+            {campuses.map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Група" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Всі групи</SelectItem>
-            {groups.map((group) => (
-              <SelectItem key={group.id} value={group.id}>
-                {group.name}
-              </SelectItem>
+            {filteredGroups.map((group) => (
+              <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -91,9 +121,20 @@ export default function SchedulePage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Всі викладачі</SelectItem>
-            {teachers.map((teacher) => (
-              <SelectItem key={teacher.id} value={teacher.user_id}>
-                {teacher.full_name}
+            {teachers.map((t) => (
+              <SelectItem key={t.id} value={t.user_id}>{t.full_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={selectedClassroomId} onValueChange={setSelectedClassroomId}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Аудиторія" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Всі аудиторії</SelectItem>
+            {filteredClassrooms.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name}{c.is_universal ? " ∞" : ""}
               </SelectItem>
             ))}
           </SelectContent>
@@ -126,7 +167,6 @@ export default function SchedulePage() {
                 <div key={i} className="space-y-2">
                   <Skeleton className="h-16 w-full" />
                   <Skeleton className="h-20 w-full" />
-                  <Skeleton className="h-20 w-full" />
                 </div>
               ))}
             </div>
@@ -134,18 +174,10 @@ export default function SchedulePage() {
         ) : (
           <>
             <TabsContent value="day" className="mt-6">
-              <DayView
-                events={filteredEvents}
-                onEventClick={handleEventClick}
-                onAddEvent={handleAddEvent}
-              />
+              <DayView events={filteredEvents} onEventClick={handleEventClick} onAddEvent={handleAddEvent} />
             </TabsContent>
             <TabsContent value="week" className="mt-6">
-              <WeekView
-                events={filteredEvents}
-                onEventClick={handleEventClick}
-                onAddEvent={handleAddEvent}
-              />
+              <WeekView events={filteredEvents} onEventClick={handleEventClick} onAddEvent={handleAddEvent} />
             </TabsContent>
             <TabsContent value="month" className="mt-6">
               <Card className="p-8 text-center text-muted-foreground">
@@ -156,20 +188,20 @@ export default function SchedulePage() {
         )}
       </Tabs>
 
-      {/* Event Form Dialog */}
       <EventFormDialog
         open={showEventForm}
         onOpenChange={setShowEventForm}
         event={selectedEvent}
-        groups={groups}
+        groups={filteredGroups.length > 0 ? filteredGroups : groups}
         rooms={rooms}
+        classrooms={filteredClassrooms.length > 0 ? filteredClassrooms : classrooms}
         teachers={teachers}
         onSave={createEvent}
         onUpdate={updateEvent}
+        onCheckConflicts={checkConflicts}
         initialDate={initialDate}
       />
 
-      {/* Event Detail Dialog */}
       <EventDetailDialog
         open={showEventDetail}
         onOpenChange={setShowEventDetail}

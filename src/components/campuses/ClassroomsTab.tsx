@@ -54,11 +54,12 @@ export function ClassroomsTab({
     capacity: null,
     notes: null,
     is_active: true,
+    is_universal: false,
   });
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: "", capacity: null, notes: null, is_active: true });
+    setForm({ name: "", capacity: null, notes: null, is_active: true, is_universal: false });
     setShowDialog(true);
   };
 
@@ -69,6 +70,7 @@ export function ClassroomsTab({
       capacity: c.capacity,
       notes: c.notes,
       is_active: c.is_active,
+      is_universal: c.is_universal,
     });
     setShowDialog(true);
   };
@@ -112,8 +114,12 @@ export function ClassroomsTab({
                 <span className="font-medium text-foreground">{c.name}</span>
                 {c.notes && (
                   <p className="text-xs text-muted-foreground truncate">
+                    {c.is_universal && <span className="font-medium">Універсальна · </span>}
                     {c.notes}
                   </p>
+                )}
+                {!c.notes && c.is_universal && (
+                  <p className="text-xs text-muted-foreground">Універсальна</p>
                 )}
               </div>
               {c.capacity != null && (
@@ -196,6 +202,13 @@ export function ClassroomsTab({
                 }
                 placeholder="Обладнання, тип тощо"
                 rows={3}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label>Універсальна (без перевірки конфліктів)</Label>
+              <Switch
+                checked={form.is_universal}
+                onCheckedChange={(v) => setForm({ ...form, is_universal: v })}
               />
             </div>
             <div className="flex items-center justify-between">
