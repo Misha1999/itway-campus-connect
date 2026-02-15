@@ -18,11 +18,11 @@ const FOCUS_RANGE = 60;
 
 // Auto-zoom delays (cumulative from hover start)
 const AUTO_ZOOM_DELAYS: { level: ZoomLevel; delay: number }[] = [
-  { level: 180, delay: 0 },       // immediate: 3h grid
-  { level: 60,  delay: 1000 },    // +1s: 1h
-  { level: 30,  delay: 2000 },    // +1s: 30min
-  { level: 10,  delay: 3000 },    // +1s: 10min
-  { level: 5,   delay: 4000 },    // +1s: 5min
+  { level: 180, delay: 0 },        // immediate: 3h grid
+  { level: 60,  delay: 1500 },     // +1.5s: 1h
+  { level: 30,  delay: 3000 },     // +1.5s: 30min
+  { level: 10,  delay: 4500 },     // +1.5s: 10min
+  { level: 5,   delay: 6000 },     // +1.5s: 5min
 ];
 
 interface TimelineDropZoneProps {
@@ -274,19 +274,41 @@ export function TimelineDropZone({
         {markers.map((marker) => {
           const y = timeToY(marker.minutes);
           const inFocus = isInFocus(marker.minutes);
+          
+          // Fine markers only in focus zone
           if ((marker.type === "ten" || marker.type === "five") && !inFocus) return null;
+          
+          // When zoomed in, hide distant coarse markers to free up space
+          // Keep nearby hour/half marks for navigation context
+          const distFromCursor = cursorMinutes ? Math.abs(marker.minutes - cursorMinutes) : 0;
+          const NEARBY = FOCUS_RANGE + 60; // ±2h considered "nearby"
+          
+          if (cursorMinutes && activeZoom <= 30) {
+            // At 30min zoom: hide hour marks that are far away
+            if (marker.type === "hour" && distFromCursor > NEARBY) return null;
+          }
+          if (cursorMinutes && activeZoom <= 10) {
+            // At 10min zoom: hide half marks that are far, keep only close hours
+            if (marker.type === "half" && distFromCursor > FOCUS_RANGE) return null;
+            if (marker.type === "hour" && distFromCursor > NEARBY + 60) return null;
+          }
+          
           // At coarsest zoom (180), dim non-3h hour marks
           const is3hMark = marker.type === "hour" && marker.minutes % 180 === 0;
           const dimmedAtCoarse = activeZoom >= 180 && marker.type === "hour" && !is3hMark;
+          
+          // Fade distant markers smoothly
+          const fadeFar = cursorMinutes && activeZoom < 60 && distFromCursor > FOCUS_RANGE;
+          const opacity = fadeFar ? Math.max(0.3, 1 - (distFromCursor - FOCUS_RANGE) / 180) : 1;
 
           return (
             <div
               key={`${marker.type}-${marker.minutes}`}
-              className="absolute left-0 right-0 transition-all duration-150"
-              style={{ top: y }}
+              className="absolute left-0 right-0 transition-all duration-200"
+              style={{ top: y, opacity }}
             >
               <div className={cn(
-                "border-t transition-all duration-150",
+                "border-t transition-all duration-200",
                 marker.type === "hour" && !dimmedAtCoarse && "border-border",
                 marker.type === "hour" && dimmedAtCoarse && "border-border/30 border-dashed",
                 marker.type === "half" && "border-border/40",
@@ -295,7 +317,7 @@ export function TimelineDropZone({
               )} />
               {marker.type === "hour" && (
                 <span className={cn(
-                  "absolute left-2 font-mono tracking-tight -top-3 transition-all duration-150",
+                  "absolute left-2 font-mono tracking-tight -top-3 transition-all duration-200",
                   is3hMark || activeZoom < 180
                     ? "text-xs font-semibold text-foreground/70"
                     : "text-[10px] font-normal text-muted-foreground/50"
