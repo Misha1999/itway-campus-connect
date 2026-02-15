@@ -40,6 +40,7 @@ interface LessonSlotDialogProps {
   slot: LessonSlot | null;
   programs: StudyProgram[];
   onSave: (data: LessonSlotFormData) => Promise<boolean>;
+  onSaveBatch: (items: LessonSlotFormData[]) => Promise<boolean>;
   onUpdate: (id: string, data: LessonSlotFormData) => Promise<boolean>;
 }
 
@@ -59,6 +60,7 @@ export function LessonSlotDialog({
   slot,
   programs,
   onSave,
+  onSaveBatch,
   onUpdate,
 }: LessonSlotDialogProps) {
   const [saving, setSaving] = useState(false);
@@ -148,11 +150,11 @@ export function LessonSlotDialog({
       return;
     }
 
-    // Create mode: for each day × each lesson
-    let allSuccess = true;
+    // Create mode: batch all days × lessons
+    const items: LessonSlotFormData[] = [];
     for (const day of selectedDays) {
       for (const lesson of lessons) {
-        const success = await onSave({
+        items.push({
           name: slotName,
           is_global: isGlobal,
           study_program_id: isGlobal ? null : studyProgramId,
@@ -161,12 +163,12 @@ export function LessonSlotDialog({
           duration_minutes: lesson.duration_minutes,
           is_active: isActive,
         });
-        if (!success) allSuccess = false;
       }
     }
 
+    const success = await onSaveBatch(items);
     setSaving(false);
-    if (allSuccess) onOpenChange(false);
+    if (success) onOpenChange(false);
   };
 
   const canSubmit =
