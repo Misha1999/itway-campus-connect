@@ -5,9 +5,9 @@ import { format } from "date-fns";
 import { uk } from "date-fns/locale";
 
 // Timeline range
-const TL_START = 8 * 60;  // 08:00 in minutes
-const TL_END = 21 * 60;   // 21:00 in minutes
-const TL_RANGE = TL_END - TL_START; // 780 minutes
+const TL_START = 8 * 60;  // 08:00
+const TL_END = 20 * 60;   // 20:00
+const TL_RANGE = TL_END - TL_START; // 720 minutes
 
 // Zoom levels: minutes per snap
 const ZOOM_LEVELS = [30, 15, 10, 5] as const;
@@ -17,8 +17,8 @@ type ZoomLevel = typeof ZOOM_LEVELS[number];
 const FOCUS_RANGE = 60;
 
 // Auto-zoom delays
-const AUTO_ZOOM_DELAY_1 = 500;  // ms → 10min
-const AUTO_ZOOM_DELAY_2 = 1000; // ms → 5min
+const AUTO_ZOOM_DELAY_1 = 400;
+const AUTO_ZOOM_DELAY_2 = 800;
 
 interface TimelineDropZoneProps {
   date: Date;
@@ -53,7 +53,6 @@ export function TimelineDropZone({
   const [cursorMinutes, setCursorMinutes] = useState<number | null>(null);
   const [autoZoomLevel, setAutoZoomLevel] = useState<ZoomLevel>(30);
   const [wheelZoomLevel, setWheelZoomLevel] = useState<ZoomLevel | null>(null);
-  const [hoverStartTime, setHoverStartTime] = useState<number | null>(null);
   const [lastMoveSpeed, setLastMoveSpeed] = useState(0);
   const lastMoveRef = useRef<{ y: number; time: number } | null>(null);
   const autoZoomTimer1 = useRef<ReturnType<typeof setTimeout>>();
@@ -61,14 +60,12 @@ export function TimelineDropZone({
 
   const activeZoom = wheelZoomLevel ?? autoZoomLevel;
 
-  // Effective snap: fast mouse → coarse snap, slow → fine
   const effectiveSnap = useMemo(() => {
-    if (lastMoveSpeed > 400) return 30; // fast → always 30min
+    if (lastMoveSpeed > 400) return 30;
     if (lastMoveSpeed > 200) return Math.max(activeZoom, 15) as ZoomLevel;
     return activeZoom;
   }, [activeZoom, lastMoveSpeed]);
 
-  // Update container height on mount/resize
   useEffect(() => {
     if (!containerRef.current) return;
     const obs = new ResizeObserver(([entry]) => {
@@ -78,14 +75,12 @@ export function TimelineDropZone({
     return () => obs.disconnect();
   }, [visible]);
 
-  // Reset state when not visible
   useEffect(() => {
     if (!visible) {
       setCursorY(null);
       setCursorMinutes(null);
       setAutoZoomLevel(30);
       setWheelZoomLevel(null);
-      setHoverStartTime(null);
       setLastMoveSpeed(0);
       lastMoveRef.current = null;
       clearTimeout(autoZoomTimer1.current);
@@ -93,50 +88,37 @@ export function TimelineDropZone({
     }
   }, [visible]);
 
-  // Time-to-Y mapping with local zoom
   const timeToY = useCallback((minutes: number): number => {
     if (containerHeight === 0) return 0;
     if (!cursorMinutes || activeZoom === 30) {
-      // Linear mapping
       return ((minutes - TL_START) / TL_RANGE) * containerHeight;
     }
-
-    // Local zoom: stretch ±FOCUS_RANGE around cursor
     const focusStart = Math.max(TL_START, cursorMinutes - FOCUS_RANGE);
     const focusEnd = Math.min(TL_END, cursorMinutes + FOCUS_RANGE);
     const focusLen = focusEnd - focusStart;
     const nonFocusLen = TL_RANGE - focusLen;
-
-    // Zoom factor for focus area (higher = more stretched)
-    const zoomFactor = 30 / activeZoom; // e.g., 30/5 = 6x
+    const zoomFactor = 30 / activeZoom;
     const focusWeight = focusLen * zoomFactor;
     const totalWeight = nonFocusLen + focusWeight;
     const pxPerWeight = containerHeight / totalWeight;
 
     if (minutes <= focusStart) {
-      // Before focus zone
       return (minutes - TL_START) * pxPerWeight;
     } else if (minutes >= focusEnd) {
-      // After focus zone
       const beforeFocusPx = (focusStart - TL_START) * pxPerWeight;
       const focusPx = focusLen * zoomFactor * pxPerWeight;
-      const afterFocusMin = minutes - focusEnd;
-      return beforeFocusPx + focusPx + afterFocusMin * pxPerWeight;
+      return beforeFocusPx + focusPx + (minutes - focusEnd) * pxPerWeight;
     } else {
-      // Inside focus zone
       const beforeFocusPx = (focusStart - TL_START) * pxPerWeight;
-      const inFocusMin = minutes - focusStart;
-      return beforeFocusPx + inFocusMin * zoomFactor * pxPerWeight;
+      return beforeFocusPx + (minutes - focusStart) * zoomFactor * pxPerWeight;
     }
   }, [containerHeight, cursorMinutes, activeZoom]);
 
-  // Y-to-time mapping (inverse)
   const yToTime = useCallback((y: number): number => {
     if (containerHeight === 0) return TL_START;
     if (!cursorMinutes || activeZoom === 30) {
       return TL_START + (y / containerHeight) * TL_RANGE;
     }
-
     const focusStart = Math.max(TL_START, cursorMinutes - FOCUS_RANGE);
     const focusEnd = Math.min(TL_END, cursorMinutes + FOCUS_RANGE);
     const focusLen = focusEnd - focusStart;
@@ -152,27 +134,23 @@ export function TimelineDropZone({
     if (y <= beforeFocusPx) {
       return TL_START + y / pxPerWeight;
     } else if (y <= beforeFocusPx + focusPx) {
-      const inFocusPx = y - beforeFocusPx;
-      return focusStart + inFocusPx / (zoomFactor * pxPerWeight);
+      return focusStart + (y - beforeFocusPx) / (zoomFactor * pxPerWeight);
     } else {
-      const afterPx = y - beforeFocusPx - focusPx;
-      return focusEnd + afterPx / pxPerWeight;
+      return focusEnd + (y - beforeFocusPx - focusPx) / pxPerWeight;
     }
   }, [containerHeight, cursorMinutes, activeZoom]);
 
-  // Handle mouse/drag move
   const handleMove = useCallback((clientY: number) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const y = Math.max(0, Math.min(containerHeight, clientY - rect.top));
     setCursorY(y);
 
-    // Track speed
     const now = Date.now();
     if (lastMoveRef.current) {
       const dy = Math.abs(y - lastMoveRef.current.y);
       const dt = Math.max(1, now - lastMoveRef.current.time);
-      setLastMoveSpeed(dy / dt * 1000); // px/s
+      setLastMoveSpeed(dy / dt * 1000);
     }
     lastMoveRef.current = { y, time: now };
 
@@ -185,10 +163,8 @@ export function TimelineDropZone({
     onDropTimeChange(snapped);
   }, [containerHeight, yToTime, effectiveSnap, eventDurationMinutes, onDropTimeChange]);
 
-  // Auto-zoom timers
   const startAutoZoom = useCallback(() => {
     setAutoZoomLevel(30);
-    setHoverStartTime(Date.now());
     clearTimeout(autoZoomTimer1.current);
     clearTimeout(autoZoomTimer2.current);
 
@@ -205,10 +181,8 @@ export function TimelineDropZone({
     clearTimeout(autoZoomTimer1.current);
     clearTimeout(autoZoomTimer2.current);
     setAutoZoomLevel(30);
-    setHoverStartTime(null);
   }, []);
 
-  // Wheel zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -224,14 +198,11 @@ export function TimelineDropZone({
     });
   }, [autoZoomLevel]);
 
-  // Generate time markers
   const markers = useMemo(() => {
-    const result: { minutes: number; label: string; type: "hour" | "half" | "quarter" | "ten" | "five" }[] = [];
-    // Always show hour marks
+    const result: { minutes: number; label: string; type: "hour" | "half" | "ten" | "five" }[] = [];
     for (let m = TL_START; m <= TL_END; m += 60) {
       result.push({ minutes: m, label: minutesToTimeStr(m), type: "hour" });
     }
-    // Show finer marks based on zoom
     if (activeZoom <= 15) {
       for (let m = TL_START + 30; m < TL_END; m += 60) {
         result.push({ minutes: m, label: minutesToTimeStr(m), type: "half" });
@@ -239,22 +210,17 @@ export function TimelineDropZone({
     }
     if (activeZoom <= 10) {
       for (let m = TL_START; m < TL_END; m += 10) {
-        if (m % 30 !== 0) {
-          result.push({ minutes: m, label: "", type: "ten" });
-        }
+        if (m % 30 !== 0) result.push({ minutes: m, label: "", type: "ten" });
       }
     }
     if (activeZoom <= 5) {
       for (let m = TL_START; m < TL_END; m += 5) {
-        if (m % 10 !== 0) {
-          result.push({ minutes: m, label: "", type: "five" });
-        }
+        if (m % 10 !== 0) result.push({ minutes: m, label: "", type: "five" });
       }
     }
     return result;
   }, [activeZoom]);
 
-  // Determine which markers are in focus zone
   const isInFocus = useCallback((minutes: number) => {
     if (!cursorMinutes) return false;
     return Math.abs(minutes - cursorMinutes) <= FOCUS_RANGE;
@@ -269,11 +235,17 @@ export function TimelineDropZone({
     <div
       ref={containerRef}
       className={cn(
-        "absolute inset-x-0 z-30 bg-background/98 border rounded-lg shadow-xl overflow-hidden",
-        "animate-scale-in transition-all duration-150",
+        "absolute z-40 bg-background/[0.97] border-2 border-primary/20 rounded-xl shadow-2xl overflow-hidden",
+        "animate-scale-in transition-all duration-150 backdrop-blur-sm",
         className
       )}
-      style={{ top: 60, bottom: 8 }}
+      style={{
+        top: 0,
+        bottom: 0,
+        left: -16,
+        right: -16,
+        minHeight: 400,
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -289,48 +261,55 @@ export function TimelineDropZone({
       }}
       onWheel={handleWheel}
     >
-      {/* Time markers */}
-      {markers.map((marker) => {
-        const y = timeToY(marker.minutes);
-        const inFocus = isInFocus(marker.minutes);
-        // Only show fine markers in focus zone
-        if ((marker.type === "ten" || marker.type === "five") && !inFocus) return null;
+      {/* Left time labels column */}
+      <div className="absolute inset-0 pointer-events-none">
+        {markers.map((marker) => {
+          const y = timeToY(marker.minutes);
+          const inFocus = isInFocus(marker.minutes);
+          if ((marker.type === "ten" || marker.type === "five") && !inFocus) return null;
 
-        return (
-          <div
-            key={`${marker.type}-${marker.minutes}`}
-            className="absolute left-0 right-0 pointer-events-none transition-all duration-150"
-            style={{ top: y }}
-          >
-            <div className={cn(
-              "border-t transition-all duration-150",
-              marker.type === "hour" && "border-border/80",
-              marker.type === "half" && "border-border/50",
-              marker.type === "ten" && "border-border/30 border-dashed",
-              marker.type === "five" && "border-border/20 border-dotted",
-            )} />
-            {(marker.type === "hour" || (marker.type === "half" && activeZoom <= 15)) && (
-              <span className={cn(
-                "absolute left-1 text-muted-foreground font-mono transition-all duration-150",
-                marker.type === "hour" ? "text-[11px] font-medium -top-3" : "text-[9px] -top-2.5 opacity-70",
-              )}>
-                {marker.label || minutesToTimeStr(marker.minutes)}
-              </span>
-            )}
-          </div>
-        );
-      })}
+          return (
+            <div
+              key={`${marker.type}-${marker.minutes}`}
+              className="absolute left-0 right-0 transition-all duration-150"
+              style={{ top: y }}
+            >
+              <div className={cn(
+                "border-t transition-all duration-150",
+                marker.type === "hour" && "border-border",
+                marker.type === "half" && "border-border/50",
+                marker.type === "ten" && "border-border/30 border-dashed",
+                marker.type === "five" && "border-border/20 border-dotted",
+              )} />
+              {marker.type === "hour" && (
+                <span className="absolute left-2 text-xs font-semibold text-foreground/70 -top-3 font-mono tracking-tight">
+                  {marker.label}
+                </span>
+              )}
+              {marker.type === "half" && activeZoom <= 15 && (
+                <span className="absolute left-2 text-[11px] text-muted-foreground -top-2.5 font-mono">
+                  {marker.label}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
-      {/* Event drop preview (highlight area) */}
+      {/* Event drop preview highlight */}
       {snappedStart !== null && snappedEnd !== null && (
         <div
-          className="absolute left-6 right-1 rounded-md transition-all duration-100 pointer-events-none"
+          className="absolute left-8 right-2 rounded-lg transition-all duration-100 pointer-events-none"
           style={{
             top: timeToY(snappedStart),
-            height: Math.max(8, timeToY(snappedEnd) - timeToY(snappedStart)),
+            height: Math.max(12, timeToY(snappedEnd) - timeToY(snappedStart)),
           }}
         >
-          <div className="w-full h-full rounded-md bg-primary/20 border-2 border-primary/40 border-dashed" />
+          <div className="w-full h-full rounded-lg bg-primary/15 border-2 border-primary/50 border-dashed flex items-center justify-center">
+            <span className="text-xs font-semibold text-primary/70">
+              {minutesToTimeStr(snappedStart)} – {minutesToTimeStr(snappedEnd)}
+            </span>
+          </div>
         </div>
       )}
 
@@ -339,23 +318,23 @@ export function TimelineDropZone({
         <div
           className="absolute z-50 pointer-events-none transition-all duration-75"
           style={{
-            top: Math.max(4, Math.min(containerHeight - 64, cursorY - 32)),
-            right: 4,
+            top: Math.max(4, Math.min(containerHeight - 80, cursorY - 40)),
+            right: 8,
           }}
         >
-          <div className="bg-primary text-primary-foreground rounded-lg px-3 py-2 shadow-lg text-xs space-y-0.5 min-w-[120px]">
+          <div className="bg-primary text-primary-foreground rounded-xl px-3.5 py-2.5 shadow-xl text-xs space-y-1 min-w-[130px]">
             <div className="flex items-center gap-1.5">
-              <Calendar className="h-3 w-3 opacity-70" />
+              <Calendar className="h-3.5 w-3.5 opacity-70" />
               <span className="font-medium">{format(date, "EEE, d MMM", { locale: uk })}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <Clock className="h-3 w-3 opacity-70" />
-              <span className="font-semibold">
+              <Clock className="h-3.5 w-3.5 opacity-70" />
+              <span className="font-bold text-sm">
                 {minutesToTimeStr(snappedStart)} – {minutesToTimeStr(snappedEnd)}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <Timer className="h-3 w-3 opacity-70" />
+              <Timer className="h-3.5 w-3.5 opacity-70" />
               <span>{eventDurationMinutes} хв</span>
             </div>
             {effectiveSnap !== 30 && (
@@ -370,8 +349,8 @@ export function TimelineDropZone({
 
       {/* Zoom level indicator */}
       {activeZoom !== 30 && (
-        <div className="absolute top-1 right-1 z-40 pointer-events-none">
-          <div className="bg-muted/90 text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-mono">
+        <div className="absolute top-2 right-2 z-40 pointer-events-none">
+          <div className="bg-primary/10 text-primary rounded-md px-2 py-1 text-[11px] font-semibold font-mono">
             {activeZoom}хв
           </div>
         </div>

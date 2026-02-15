@@ -162,8 +162,9 @@ export function WeekView({
             <div
               key={dateKey}
               className={cn(
-                "min-h-[200px] transition-colors rounded-lg relative",
-                isDragTarget && "ring-2 ring-primary/30"
+                "transition-colors rounded-lg relative",
+                isDragging ? "min-h-[420px]" : "min-h-[200px]",
+                isDragTarget && "ring-2 ring-primary/30 z-30"
               )}
               onDragOver={(e) => handleDragOver(e, dateKey)}
               onDragLeave={(e) => handleDragLeave(e, dateKey)}
