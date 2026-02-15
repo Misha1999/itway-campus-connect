@@ -19,11 +19,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
+import { ImageUploader } from "@/components/shared/ImageUploader";
+import { CampusMultiSelect } from "@/components/shared/CampusMultiSelect";
+import { useCampuses } from "@/hooks/use-campuses";
 
 interface AddCourseDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: { name: string; description?: string; level?: string }) => Promise<void>;
+  onSubmit: (data: {
+    name: string;
+    description?: string;
+    level?: string;
+    campus_ids?: string[];
+    cover_image_url?: string | null;
+  }) => Promise<void>;
 }
 
 const LEVELS = [
@@ -36,7 +45,10 @@ export function AddCourseDialog({ open, onOpenChange, onSubmit }: AddCourseDialo
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [level, setLevel] = useState<string>("");
+  const [campusIds, setCampusIds] = useState<string[]>([]);
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { campuses } = useCampuses();
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
@@ -47,10 +59,14 @@ export function AddCourseDialog({ open, onOpenChange, onSubmit }: AddCourseDialo
         name: name.trim(),
         description: description.trim() || undefined,
         level: level || undefined,
+        campus_ids: campusIds,
+        cover_image_url: coverImageUrl,
       });
       setName("");
       setDescription("");
       setLevel("");
+      setCampusIds([]);
+      setCoverImageUrl(null);
       onOpenChange(false);
     } finally {
       setLoading(false);
@@ -59,7 +75,7 @@ export function AddCourseDialog({ open, onOpenChange, onSubmit }: AddCourseDialo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Новий курс</DialogTitle>
           <DialogDescription>
@@ -68,6 +84,17 @@ export function AddCourseDialog({ open, onOpenChange, onSubmit }: AddCourseDialo
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Обкладинка курсу</Label>
+            <ImageUploader
+              bucket="course-assets"
+              folder="covers"
+              value={coverImageUrl}
+              onChange={setCoverImageUrl}
+              aspectRatio="16/9"
+            />
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="name">Назва курсу *</Label>
             <Input
@@ -104,6 +131,13 @@ export function AddCourseDialog({ open, onOpenChange, onSubmit }: AddCourseDialo
               </SelectContent>
             </Select>
           </div>
+
+          <CampusMultiSelect
+            campuses={campuses}
+            selected={campusIds}
+            onChange={setCampusIds}
+            label="Доступний для філій"
+          />
         </div>
 
         <DialogFooter>

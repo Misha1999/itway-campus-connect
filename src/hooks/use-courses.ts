@@ -39,6 +39,8 @@ export interface Course {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  campus_ids: string[];
+  cover_image_url: string | null;
   modules?: CourseModule[];
   modules_count?: number;
   lessons_count?: number;
@@ -50,6 +52,8 @@ export interface CreateCourseData {
   direction_id?: string | null;
   duration_hours?: number | null;
   level?: string | null;
+  campus_ids?: string[];
+  cover_image_url?: string | null;
 }
 
 export interface CreateModuleData {
@@ -144,6 +148,8 @@ export function useCourses() {
       is_active: c.is_active,
       created_at: c.created_at,
       updated_at: c.updated_at,
+      campus_ids: (c as any).campus_ids || [],
+      cover_image_url: (c as any).cover_image_url || null,
       modules_count: modulesCountMap[c.id] || 0,
       lessons_count: lessonsCountMap[c.id] || 0,
     }));
@@ -228,6 +234,8 @@ export function useCourses() {
       is_active: courseData.is_active,
       created_at: courseData.created_at,
       updated_at: courseData.updated_at,
+      campus_ids: (courseData as any).campus_ids || [],
+      cover_image_url: (courseData as any).cover_image_url || null,
       modules,
     };
   }, []);
@@ -241,7 +249,9 @@ export function useCourses() {
         direction_id: courseData.direction_id || null,
         duration_hours: courseData.duration_hours || null,
         level: courseData.level || null,
-      })
+        campus_ids: courseData.campus_ids || [],
+        cover_image_url: courseData.cover_image_url || null,
+      } as any)
       .select()
       .single();
 
@@ -262,7 +272,7 @@ export function useCourses() {
       .update({
         ...courseData,
         updated_at: new Date().toISOString(),
-      })
+      } as any)
       .eq("id", id);
 
     if (error) {

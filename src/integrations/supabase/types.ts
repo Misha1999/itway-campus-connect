@@ -402,6 +402,8 @@ export type Database = {
       }
       courses: {
         Row: {
+          campus_ids: string[] | null
+          cover_image_url: string | null
           created_at: string
           description: string | null
           direction_id: string | null
@@ -413,6 +415,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          campus_ids?: string[] | null
+          cover_image_url?: string | null
           created_at?: string
           description?: string | null
           direction_id?: string | null
@@ -424,6 +428,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          campus_ids?: string[] | null
+          cover_image_url?: string | null
           created_at?: string
           description?: string | null
           direction_id?: string | null
