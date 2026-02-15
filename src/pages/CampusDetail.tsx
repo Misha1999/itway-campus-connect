@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useLessonSlots } from "@/hooks/use-lesson-slots";
+import { LessonSlotsTab } from "@/components/campuses/LessonSlotsTab";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,6 +30,7 @@ import {
   Pencil,
   Archive,
   Save,
+  Clock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -75,6 +78,15 @@ export default function CampusDetailPage() {
   const [editedCampus, setEditedCampus] = useState<Partial<Campus>>({});
   const [showAddProgram, setShowAddProgram] = useState(false);
   const [showAddCohort, setShowAddCohort] = useState(false);
+
+  const {
+    slots,
+    loading: slotsLoading,
+    createSlot,
+    updateSlot,
+    toggleSlotActive,
+    deleteSlot,
+  } = useLessonSlots(id || "");
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -298,6 +310,10 @@ export default function CampusDetailPage() {
             <Users className="h-4 w-4 mr-2" />
             Потоки ({cohorts.length})
           </TabsTrigger>
+          <TabsTrigger value="slots">
+            <Clock className="h-4 w-4 mr-2" />
+            Уроки (Слоти)
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="info">
@@ -422,6 +438,18 @@ export default function CampusDetailPage() {
               />
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="slots">
+          <LessonSlotsTab
+            slots={slots}
+            loading={slotsLoading}
+            programs={programs}
+            onSave={createSlot}
+            onUpdate={updateSlot}
+            onToggleActive={toggleSlotActive}
+            onDelete={deleteSlot}
+          />
         </TabsContent>
       </Tabs>
 
