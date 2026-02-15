@@ -109,7 +109,33 @@ export function useLessonSlots(campusId: string) {
       return false;
     }
 
-    toast.success("Слот створено");
+    return true;
+  };
+
+  const createSlotsBatch = async (items: LessonSlotFormData[]) => {
+    const rows = items.map((data) => ({
+      campus_id: campusId,
+      name: data.name || null,
+      is_global: data.is_global,
+      study_program_id: data.is_global ? null : data.study_program_id,
+      day_of_week: data.day_of_week,
+      start_time: data.start_time,
+      duration_minutes: data.duration_minutes,
+      is_active: data.is_active,
+    }));
+
+    const { error } = await supabase.from("lesson_slots").insert(rows);
+
+    if (error) {
+      console.error("Error creating slots:", error);
+      const msg = error.message.includes("перетинається")
+        ? error.message
+        : "Помилка створення слотів";
+      toast.error(msg);
+      return false;
+    }
+
+    toast.success(`Створено ${items.length} слот(ів)`);
     await fetchSlots();
     return true;
   };
@@ -171,5 +197,5 @@ export function useLessonSlots(campusId: string) {
     return true;
   };
 
-  return { slots, loading, createSlot, updateSlot, toggleSlotActive, deleteSlot, fetchSlots };
+  return { slots, loading, createSlot, createSlotsBatch, updateSlot, toggleSlotActive, deleteSlot, fetchSlots };
 }

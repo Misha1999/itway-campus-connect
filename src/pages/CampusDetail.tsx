@@ -83,6 +83,7 @@ export default function CampusDetailPage() {
     slots,
     loading: slotsLoading,
     createSlot,
+    createSlotsBatch,
     updateSlot,
     toggleSlotActive,
     deleteSlot,
@@ -446,6 +447,7 @@ export default function CampusDetailPage() {
             loading={slotsLoading}
             programs={programs}
             onSave={createSlot}
+            onSaveBatch={createSlotsBatch}
             onUpdate={updateSlot}
             onToggleActive={toggleSlotActive}
             onDelete={deleteSlot}
