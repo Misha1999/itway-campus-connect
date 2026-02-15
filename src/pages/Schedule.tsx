@@ -40,6 +40,7 @@ export default function SchedulePage() {
     campuses,
     loading,
     createEvent,
+    createEventsBatch,
     updateEvent,
     deleteEvent,
     cancelEvent,
@@ -193,10 +194,11 @@ export default function SchedulePage() {
         onOpenChange={setShowEventForm}
         event={selectedEvent}
         groups={filteredGroups.length > 0 ? filteredGroups : groups}
-        rooms={rooms}
         classrooms={filteredClassrooms.length > 0 ? filteredClassrooms : classrooms}
         teachers={teachers}
+        campuses={campuses}
         onSave={createEvent}
+        onSaveBatch={createEventsBatch}
         onUpdate={updateEvent}
         onCheckConflicts={checkConflicts}
         initialDate={initialDate}
