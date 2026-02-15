@@ -4,6 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useUserRole } from "@/hooks/use-user-role";
+import { StudentDashboard } from "@/components/dashboard/StudentDashboard";
 import {
   Users,
   GraduationCap,
@@ -15,7 +18,7 @@ import {
   Plus,
 } from "lucide-react";
 
-// Demo data
+// Demo data for admin dashboard
 const stats = [
   { title: "Всього студентів", value: 156, change: "+12 цього місяця", changeType: "positive" as const, icon: Users },
   { title: "Активних груп", value: 24, change: "8 закладів", changeType: "neutral" as const, icon: GraduationCap },
@@ -43,6 +46,27 @@ const pendingAssignments = [
 ];
 
 export default function DashboardPage() {
+  const { isStudent, isAdminOrAbove, isTeacher, loading } = useUserRole();
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <Skeleton className="h-12 w-48" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Student dashboard
+  if (isStudent && !isAdminOrAbove && !isTeacher) {
+    return <StudentDashboard />;
+  }
+
+  // Admin/Teacher dashboard
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader 
