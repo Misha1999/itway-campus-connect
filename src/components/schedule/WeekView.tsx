@@ -4,7 +4,7 @@ import { uk } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, MapPin, Video, Plus, GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, MapPin, Video, Plus } from "lucide-react";
 import type { ScheduleEvent } from "@/hooks/use-schedule";
 import type { Database } from "@/integrations/supabase/types";
 import type { TimeGridConfig } from "./TimeGridSettings";
@@ -22,6 +22,7 @@ const eventTypeColors: Record<EventType, string> = {
 };
 
 const HOUR_HEIGHT = 60; // px per hour
+const HOLD_DELAY = 2000; // ms before fine snap activates
 
 interface WeekViewProps {
   events: ScheduleEvent[];
@@ -56,14 +57,21 @@ export function WeekView({
   const [weekOffset, setWeekOffset] = useState(0);
 
   // In-day drag state
-  const [inDayDragId, setInDayDragId] = useState<string | null>(null);
-  const [inDayDragY, setInDayDragY] = useState<number | null>(null);
-  const [inDayStartY, setInDayStartY] = useState<number | null>(null);
-  const [inDayOriginalMin, setInDayOriginalMin] = useState<number | null>(null);
-  const [inDaySnap, setInDaySnap] = useState(snapMinutes);
+  const [dragState, setDragState] = useState<{
+    eventId: string;
+    dateKey: string;
+    startY: number;
+    currentY: number;
+    originalMin: number;
+    currentSnap: number;
+    isFineMode: boolean;
+  } | null>(null);
+  
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastMoveTimeRef = useRef<number>(0);
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const isDraggingRef = useRef(false);
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
   const weekDates = useMemo(() => {
     const today = new Date();
@@ -119,7 +127,16 @@ export function WeekView({
     return { top, height: Math.max(bottom - top, 16) };
   }, [minToY, gridStartMin, gridEndMin]);
 
-  // Cross-day drag (between columns)
+  // Calculate snapped start for drag preview
+  const getDragSnappedStart = useCallback(() => {
+    if (!dragState) return null;
+    const deltaY = dragState.currentY - dragState.startY;
+    const deltaMin = (deltaY / HOUR_HEIGHT) * 60;
+    const rawNewStart = dragState.originalMin + deltaMin;
+    return snapTo(Math.max(gridStartMin, Math.min(gridEndMin - 30, rawNewStart)), dragState.currentSnap);
+  }, [dragState, snapTo, gridStartMin, gridEndMin]);
+
+  // Cross-day drag (between columns via HTML5 drag)
   const handleCrossDragStart = (e: React.DragEvent, eventId: string) => {
     e.dataTransfer.setData("text/plain", eventId);
     e.dataTransfer.effectAllowed = "move";
@@ -137,96 +154,136 @@ export function WeekView({
     await onMoveEvent(eventId, date, startTimeStr, endTimeStr);
   };
 
-  // In-day drag handlers
+  // In-day drag: mousedown on entire card
   const startInDayDrag = useCallback((e: React.MouseEvent, event: ScheduleEvent, dateKey: string) => {
-    e.preventDefault();
-    e.stopPropagation();
+    if (!onMoveEvent) return;
+    // Store initial position to detect drag vs click
+    dragStartPosRef.current = { x: e.clientX, y: e.clientY };
+    isDraggingRef.current = false;
+
     const col = columnRefs.current[dateKey];
     if (!col) return;
     const rect = col.getBoundingClientRect();
     const y = e.clientY - rect.top;
     const startMin = new Date(event.start_time).getHours() * 60 + new Date(event.start_time).getMinutes();
 
-    setInDayDragId(event.id);
-    setInDayStartY(y);
-    setInDayDragY(y);
-    setInDayOriginalMin(startMin);
-    setInDaySnap(snapMinutes);
+    // We'll set drag state on first significant move
+    const pendingDrag = {
+      eventId: event.id,
+      dateKey,
+      startY: y,
+      currentY: y,
+      originalMin: startMin,
+      currentSnap: snapMinutes,
+      isFineMode: false,
+    };
 
-    // Start hold timer for fine snap
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-    holdTimerRef.current = setTimeout(() => {
-      setInDaySnap(fineSnapMinutes);
-    }, 2000);
-    lastMoveTimeRef.current = Date.now();
-  }, [snapMinutes, fineSnapMinutes]);
+    const handleMouseMove = (me: MouseEvent) => {
+      const dx = me.clientX - (dragStartPosRef.current?.x ?? 0);
+      const dy = me.clientY - (dragStartPosRef.current?.y ?? 0);
+      
+      // Require 4px movement to start drag
+      if (!isDraggingRef.current && Math.sqrt(dx * dx + dy * dy) < 4) return;
+      
+      if (!isDraggingRef.current) {
+        isDraggingRef.current = true;
+        setDragState(pendingDrag);
+        
+        // Start hold timer for fine snap
+        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = setTimeout(() => {
+          setDragState(prev => prev ? { ...prev, currentSnap: fineSnapMinutes, isFineMode: true } : null);
+        }, HOLD_DELAY);
+        lastMoveTimeRef.current = Date.now();
+      }
 
-  useEffect(() => {
-    if (!inDayDragId) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      // Reset hold timer on significant movement
+      // Reset hold timer on movement
       const now = Date.now();
-      lastMoveTimeRef.current = now;
-      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = setTimeout(() => {
-        setInDaySnap(fineSnapMinutes);
-      }, 2000);
+      if (now - lastMoveTimeRef.current > 50) {
+        lastMoveTimeRef.current = now;
+        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = setTimeout(() => {
+          setDragState(prev => prev ? { ...prev, currentSnap: fineSnapMinutes, isFineMode: true } : null);
+        }, HOLD_DELAY);
+        // Reset to coarse snap when moving
+        setDragState(prev => prev ? { ...prev, currentSnap: snapMinutes, isFineMode: false } : null);
+      }
 
-      // Find column
-      for (const [, col] of Object.entries(columnRefs.current)) {
-        if (!col) continue;
-        const rect = col.getBoundingClientRect();
-        if (e.clientX >= rect.left && e.clientX <= rect.right) {
-          setInDayDragY(e.clientY - rect.top);
+      // Find which column cursor is in
+      for (const [, col2] of Object.entries(columnRefs.current)) {
+        if (!col2) continue;
+        const r = col2.getBoundingClientRect();
+        if (me.clientX >= r.left && me.clientX <= r.right) {
+          const newY = me.clientY - r.top;
+          setDragState(prev => prev ? { ...prev, currentY: newY } : null);
           break;
         }
       }
     };
 
     const handleMouseUp = async () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-      if (inDayDragId && inDayDragY !== null && inDayStartY !== null && inDayOriginalMin !== null && onMoveEvent) {
-        const deltaY = inDayDragY - inDayStartY;
-        const deltaMin = (deltaY / HOUR_HEIGHT) * 60;
-        const rawNewStart = inDayOriginalMin + deltaMin;
-        const snappedStart = snapTo(Math.max(gridStartMin, Math.min(gridEndMin - 30, rawNewStart)), inDaySnap);
-        
-        const event = events.find((ev) => ev.id === inDayDragId);
-        if (event) {
-          const duration = (new Date(event.end_time).getTime() - new Date(event.start_time).getTime()) / 60000;
-          const date = new Date(event.start_time);
-          const startTimeStr = minutesToStr(snappedStart);
-          const endTimeStr = minutesToStr(snappedStart + duration);
-          await onMoveEvent(inDayDragId, date, startTimeStr, endTimeStr);
-        }
+
+      if (isDraggingRef.current && onMoveEvent) {
+        // Apply the drag
+        setDragState(prev => {
+          if (!prev) return null;
+          const deltaY = prev.currentY - prev.startY;
+          const deltaMin = (deltaY / HOUR_HEIGHT) * 60;
+          const rawNewStart = prev.originalMin + deltaMin;
+          const snappedStart = snapTo(Math.max(gridStartMin, Math.min(gridEndMin - 30, rawNewStart)), prev.currentSnap);
+          
+          const ev = events.find(e => e.id === prev.eventId);
+          if (ev) {
+            const duration = (new Date(ev.end_time).getTime() - new Date(ev.start_time).getTime()) / 60000;
+            const date = new Date(ev.start_time);
+            const startTimeStr = minutesToStr(snappedStart);
+            const endTimeStr = minutesToStr(snappedStart + duration);
+            onMoveEvent(prev.eventId, date, startTimeStr, endTimeStr);
+          }
+          return null;
+        });
       }
-      setInDayDragId(null);
-      setInDayDragY(null);
-      setInDayStartY(null);
-      setInDayOriginalMin(null);
-      setInDaySnap(snapMinutes);
+      
+      isDraggingRef.current = false;
+      dragStartPosRef.current = null;
     };
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [inDayDragId, inDayDragY, inDayStartY, inDayOriginalMin, inDaySnap, events, onMoveEvent, snapTo, gridStartMin, gridEndMin, snapMinutes, fineSnapMinutes]);
+  }, [snapMinutes, fineSnapMinutes, onMoveEvent, events, snapTo, gridStartMin, gridEndMin]);
 
-  // Calculate in-day drag preview position
-  const getInDayDragTop = useCallback((event: ScheduleEvent) => {
-    if (inDayDragId !== event.id || inDayDragY === null || inDayStartY === null || inDayOriginalMin === null) return null;
-    const deltaY = inDayDragY - inDayStartY;
-    const deltaMin = (deltaY / HOUR_HEIGHT) * 60;
-    const rawNewStart = inDayOriginalMin + deltaMin;
-    const snappedStart = snapTo(Math.max(gridStartMin, Math.min(gridEndMin - 30, rawNewStart)), inDaySnap);
-    return minToY(snappedStart);
-  }, [inDayDragId, inDayDragY, inDayStartY, inDayOriginalMin, inDaySnap, snapTo, gridStartMin, gridEndMin, minToY]);
+  // Generate snap line markers for drag overlay
+  const dragSnapMarkers = useMemo(() => {
+    if (!dragState) return [];
+    const snap = dragState.currentSnap;
+    const markers: { min: number; label: string; type: "hour" | "half" | "fine" }[] = [];
+    
+    // Always show hour lines
+    for (let m = gridStartMin; m <= gridEndMin; m += 60) {
+      markers.push({ min: m, label: minutesToStr(m), type: "hour" });
+    }
+    // Show half-hour if snap <= 30
+    if (snap <= 30) {
+      for (let m = gridStartMin + 30; m < gridEndMin; m += 60) {
+        markers.push({ min: m, label: minutesToStr(m), type: "half" });
+      }
+    }
+    // Show fine lines
+    if (snap < 30) {
+      for (let m = gridStartMin; m < gridEndMin; m += snap) {
+        if (m % 30 !== 0) {
+          markers.push({ min: m, label: "", type: "fine" });
+        }
+      }
+    }
+    return markers;
+  }, [dragState, gridStartMin, gridEndMin]);
 
   const gridHeight = totalHours * HOUR_HEIGHT;
+  const snappedStart = getDragSnappedStart();
 
   return (
     <div className="space-y-4">
@@ -252,7 +309,7 @@ export function WeekView({
       <div className="border rounded-lg overflow-hidden bg-card">
         {/* Day headers */}
         <div className="grid grid-cols-[56px_repeat(7,1fr)] border-b">
-          <div className="p-2" /> {/* Time label column */}
+          <div className="p-2" />
           {weekDates.map((date, index) => {
             const isToday = isSameDay(date, today);
             return (
@@ -297,6 +354,7 @@ export function WeekView({
             const dateKey = format(date, "yyyy-MM-dd");
             const isToday = isSameDay(date, today);
             const dayEvents = eventsByDate[dateKey] || [];
+            const isDragColumn = dragState?.dateKey === dateKey;
 
             return (
               <div
@@ -341,6 +399,34 @@ export function WeekView({
                   </div>
                 ))}
 
+                {/* Drag snap overlay lines */}
+                {isDragColumn && dragState && (
+                  <div className="absolute inset-0 z-20 pointer-events-none">
+                    {dragSnapMarkers.map((marker) => {
+                      const y = minToY(marker.min);
+                      return (
+                        <div
+                          key={`${marker.type}-${marker.min}`}
+                          className="absolute left-0 right-0"
+                          style={{ top: y }}
+                        >
+                          <div className={cn(
+                            "border-t transition-colors duration-150",
+                            marker.type === "hour" && "border-primary/30",
+                            marker.type === "half" && "border-primary/20 border-dashed",
+                            marker.type === "fine" && "border-primary/10 border-dotted",
+                          )} />
+                          {marker.type === "half" && (
+                            <span className="absolute left-1 -top-2.5 text-[9px] text-primary/40 font-mono">
+                              {marker.label}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* Current time indicator */}
                 {isToday && (() => {
                   const now = new Date();
@@ -364,28 +450,49 @@ export function WeekView({
                   const style = getEventStyle(event);
                   const isOnline = !event.room_id && !event.classroom_id;
                   const isSelected = selectedEventIds?.has(event.id) || false;
-                  const isDragging = inDayDragId === event.id;
-                  const dragTop = getInDayDragTop(event);
+                  const isDragging = dragState?.eventId === event.id;
                   const startTime = new Date(event.start_time);
                   const endTime = new Date(event.end_time);
+                  const duration = (endTime.getTime() - startTime.getTime()) / 60000;
+
+                  // Calculate drag preview position
+                  let eventTop = style.top;
+                  if (isDragging && snappedStart !== null) {
+                    eventTop = minToY(snappedStart);
+                  }
 
                   return (
                     <div
                       key={event.id}
                       className={cn(
-                        "absolute left-1 right-1 rounded border-l-[3px] cursor-pointer transition-shadow overflow-hidden z-10",
+                        "absolute left-1 right-1 rounded border-l-[3px] transition-shadow overflow-hidden z-10 select-none",
                         eventTypeColors[event.event_type],
                         event.is_cancelled && "opacity-50",
                         isSelected && "ring-2 ring-primary",
-                        isDragging && "shadow-lg z-30 opacity-80"
+                        isDragging && "shadow-lg z-30 opacity-80 ring-2 ring-primary/50",
+                        onMoveEvent && "cursor-grab active:cursor-grabbing",
+                        !onMoveEvent && "cursor-pointer"
                       )}
                       style={{
-                        top: isDragging && dragTop !== null ? dragTop : style.top,
+                        top: eventTop,
                         height: style.height,
                       }}
                       draggable={!!onMoveEvent}
                       onDragStart={(e) => handleCrossDragStart(e, event.id)}
-                      onClick={() => !isDragging && onEventClick(event)}
+                      onMouseDown={(e) => {
+                        if (e.button !== 0) return;
+                        // Don't start drag from checkbox
+                        if ((e.target as HTMLElement).closest('[role="checkbox"]')) return;
+                        if (onMoveEvent) {
+                          startInDayDrag(e, event, dateKey);
+                        }
+                      }}
+                      onClick={(e) => {
+                        // Only fire click if we didn't drag
+                        if (!isDraggingRef.current) {
+                          onEventClick(event);
+                        }
+                      }}
                     >
                       <div className="p-1 h-full flex flex-col">
                         <div className="flex items-start gap-0.5">
@@ -405,14 +512,6 @@ export function WeekView({
                               {event.title}
                             </p>
                           </div>
-                          {onMoveEvent && (
-                            <div
-                              className="shrink-0 cursor-grab active:cursor-grabbing p-0.5"
-                              onMouseDown={(e) => startInDayDrag(e, event, dateKey)}
-                            >
-                              <GripVertical className="h-3 w-3 text-muted-foreground" />
-                            </div>
-                          )}
                         </div>
                         {style.height > 30 && (
                           <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -442,37 +541,23 @@ export function WeekView({
                           </div>
                         )}
                       </div>
+
+                      {/* Drag time indicator */}
+                      {isDragging && snappedStart !== null && (
+                        <div className="absolute -top-5 left-0 right-0 z-40 pointer-events-none">
+                          <div className="text-center">
+                            <span className="bg-primary text-primary-foreground text-[10px] font-mono px-1.5 py-0.5 rounded-sm shadow-md">
+                              {minutesToStr(snappedStart)} – {minutesToStr(snappedStart + duration)}
+                              {dragState.isFineMode && (
+                                <span className="ml-1 opacity-70">⚡{dragState.currentSnap}хв</span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
-
-                {/* In-day drag snap indicator */}
-                {inDayDragId && (() => {
-                  const event = events.find((e) => e.id === inDayDragId);
-                  if (!event) return null;
-                  const dragTop2 = getInDayDragTop(event);
-                  if (dragTop2 === null) return null;
-                  const deltaY = (inDayDragY ?? 0) - (inDayStartY ?? 0);
-                  const deltaMin = (deltaY / HOUR_HEIGHT) * 60;
-                  const rawNewStart = (inDayOriginalMin ?? 0) + deltaMin;
-                  const snappedStart = snapTo(Math.max(gridStartMin, Math.min(gridEndMin - 30, rawNewStart)), inDaySnap);
-                  const duration = (new Date(event.end_time).getTime() - new Date(event.start_time).getTime()) / 60000;
-                  const dateKey2 = format(new Date(event.start_time), "yyyy-MM-dd");
-                  if (dateKey2 !== dateKey) return null;
-
-                  return (
-                    <div
-                      className="absolute left-0 right-0 z-40 pointer-events-none"
-                      style={{ top: dragTop2 - 14 }}
-                    >
-                      <div className="text-center">
-                        <span className="bg-primary text-primary-foreground text-[10px] font-mono px-1.5 py-0.5 rounded-sm">
-                          {minutesToStr(snappedStart)} – {minutesToStr(snappedStart + duration)} ({inDaySnap}хв)
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
             );
           })}
