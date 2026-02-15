@@ -16,6 +16,9 @@ import MaterialEditorPage from "./pages/MaterialEditor";
 import CourseDetailPage from "./pages/CourseDetail";
 import LessonDetailPage from "./pages/LessonDetail";
 import CoinsPage from "./pages/Coins";
+import StudentGradesPage from "./pages/StudentGrades";
+import StudentProgressPage from "./pages/StudentProgress";
+import StudentAchievementsPage from "./pages/StudentAchievements";
 import UsersPage from "./pages/Users";
 import CampusesPage from "./pages/Campuses";
 import CampusDetailPage from "./pages/CampusDetail";
@@ -47,6 +50,9 @@ const App = () => (
             <Route path="/library/courses/:id" element={<CourseDetailPage />} />
             <Route path="/library/courses/:courseId/lessons/:lessonId" element={<LessonDetailPage />} />
             <Route path="/coins" element={<CoinsPage />} />
+            <Route path="/grades" element={<StudentGradesPage />} />
+            <Route path="/progress" element={<StudentProgressPage />} />
+            <Route path="/achievements" element={<StudentAchievementsPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/campuses" element={<CampusesPage />} />
             <Route path="/campuses/:id" element={<CampusDetailPage />} />
