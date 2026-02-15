@@ -37,6 +37,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import {
   Trash2,
@@ -75,7 +79,7 @@ interface BulkActionsBarProps {
   classrooms: Classroom[];
   teachers: Teacher[];
   onClear: () => void;
-  onSelectAll: () => void;
+  onSelectByFilter: (ids: string[]) => void;
   onBulkDelete: (ids: string[]) => Promise<boolean>;
   onBulkCancel: (ids: string[], reason: string) => Promise<boolean>;
   onBulkRestore: (ids: string[]) => Promise<boolean>;
@@ -110,7 +114,7 @@ export function BulkActionsBar({
   classrooms,
   teachers,
   onClear,
-  onSelectAll,
+  onSelectByFilter,
   onBulkDelete,
   onBulkCancel,
   onBulkRestore,
@@ -144,6 +148,35 @@ export function BulkActionsBar({
 
   const selectedEvents = events.filter((e) => selectedIds.has(e.id));
   const cancelledCount = selectedEvents.filter((e) => e.is_cancelled).length;
+
+  // Smart selection helpers
+  const uniqueGroups = [...new Map(events.map((e) => [e.group_id, e.group_name || e.group_id])).entries()];
+  const uniqueTeachers = [...new Map(events.filter((e) => e.teacher_id).map((e) => [e.teacher_id!, e.teacher_name || e.teacher_id!])).entries()];
+  const uniqueClassrooms = [...new Map(events.filter((e) => e.classroom_id).map((e) => [e.classroom_id!, e.classroom_name || e.classroom_id!])).entries()];
+  const uniqueEventTypes = [...new Set(events.map((e) => e.event_type))];
+
+  const selectByGroup = (groupId: string) => {
+    onSelectByFilter(events.filter((e) => e.group_id === groupId).map((e) => e.id));
+  };
+  const selectByTeacher = (teacherId: string) => {
+    onSelectByFilter(events.filter((e) => e.teacher_id === teacherId).map((e) => e.id));
+  };
+  const selectByClassroom = (classroomId: string) => {
+    onSelectByFilter(events.filter((e) => e.classroom_id === classroomId).map((e) => e.id));
+  };
+  const selectByType = (type: EventType) => {
+    onSelectByFilter(events.filter((e) => e.event_type === type).map((e) => e.id));
+  };
+  const selectCancelled = () => {
+    onSelectByFilter(events.filter((e) => e.is_cancelled).map((e) => e.id));
+  };
+  const selectToday = () => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    onSelectByFilter(events.filter((e) => e.start_time.startsWith(todayStr)).map((e) => e.id));
+  };
+  const selectAll = () => {
+    onSelectByFilter(events.map((e) => e.id));
+  };
 
   const handleAction = async () => {
     setProcessing(true);
@@ -272,9 +305,87 @@ export function BulkActionsBar({
 
           <Separator orientation="vertical" className="h-6" />
 
-          <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground" onClick={onSelectAll}>
-            <CheckSquare className="h-3.5 w-3.5" /> Всі
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground">
+                <CheckSquare className="h-3.5 w-3.5" /> Вибрати
+                <ChevronUp className="h-3 w-3 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" className="w-64 bg-popover">
+              <DropdownMenuItem onClick={selectAll}>
+                <CheckSquare className="h-4 w-4 mr-2" /> Всі видимі ({events.length})
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={selectToday}>
+                <CalendarClock className="h-4 w-4 mr-2" /> Сьогоднішні
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={selectCancelled}>
+                <XCircle className="h-4 w-4 mr-2" /> Скасовані
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              {uniqueGroups.length > 0 && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Users className="h-4 w-4 mr-2" /> За групою
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="bg-popover max-h-64 overflow-y-auto">
+                    {uniqueGroups.map(([id, name]) => (
+                      <DropdownMenuItem key={id} onClick={() => selectByGroup(id)}>
+                        {name} ({events.filter((e) => e.group_id === id).length})
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+
+              {uniqueTeachers.length > 0 && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <UserRoundCog className="h-4 w-4 mr-2" /> За викладачем
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="bg-popover max-h-64 overflow-y-auto">
+                    {uniqueTeachers.map(([id, name]) => (
+                      <DropdownMenuItem key={id} onClick={() => selectByTeacher(id)}>
+                        {name} ({events.filter((e) => e.teacher_id === id).length})
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+
+              {uniqueClassrooms.length > 0 && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Building2 className="h-4 w-4 mr-2" /> За аудиторією
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="bg-popover max-h-64 overflow-y-auto">
+                    {uniqueClassrooms.map(([id, name]) => (
+                      <DropdownMenuItem key={id} onClick={() => selectByClassroom(id)}>
+                        {name} ({events.filter((e) => e.classroom_id === id).length})
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+
+              {uniqueEventTypes.length > 1 && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Tag className="h-4 w-4 mr-2" /> За типом
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="bg-popover">
+                    {uniqueEventTypes.map((type) => (
+                      <DropdownMenuItem key={type} onClick={() => selectByType(type)}>
+                        {eventTypeLabels[type]} ({events.filter((e) => e.event_type === type).length})
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClear}>
             <X className="h-3.5 w-3.5" />
           </Button>

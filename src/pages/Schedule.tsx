@@ -144,10 +144,6 @@ export default function SchedulePage() {
 
   const clearSelection = () => setSelectedEventIds(new Set());
 
-  const selectAllVisible = () => {
-    setSelectedEventIds(new Set(filteredEvents.map((e) => e.id)));
-  };
-
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title={<span className="flex items-center gap-1">Розклад <TimeGridSettings config={timeGridConfig} onUpdate={updateTimeGridConfig} /></span>} description="Календар занять та подій">
@@ -295,7 +291,7 @@ export default function SchedulePage() {
         classrooms={classrooms}
         teachers={teachers}
         onClear={clearSelection}
-        onSelectAll={selectAllVisible}
+        onSelectByFilter={(ids) => setSelectedEventIds(new Set(ids))}
         onBulkDelete={bulkDelete}
         onBulkCancel={bulkCancel}
         onBulkRestore={bulkRestore}
