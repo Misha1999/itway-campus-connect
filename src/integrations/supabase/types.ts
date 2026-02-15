@@ -703,6 +703,63 @@ export type Database = {
           },
         ]
       }
+      lesson_slots: {
+        Row: {
+          campus_id: string
+          created_at: string
+          day_of_week: number
+          duration_minutes: number
+          id: string
+          is_active: boolean
+          is_global: boolean
+          name: string | null
+          start_time: string
+          study_program_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          day_of_week: number
+          duration_minutes?: number
+          id?: string
+          is_active?: boolean
+          is_global?: boolean
+          name?: string | null
+          start_time: string
+          study_program_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          day_of_week?: number
+          duration_minutes?: number
+          id?: string
+          is_active?: boolean
+          is_global?: boolean
+          name?: string | null
+          start_time?: string
+          study_program_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lesson_slots_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_slots_study_program_id_fkey"
+            columns: ["study_program_id"]
+            isOneToOne: false
+            referencedRelation: "study_programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lessons: {
         Row: {
           created_at: string
