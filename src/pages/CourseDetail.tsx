@@ -21,7 +21,10 @@ import {
   GraduationCap, Loader2 
 } from "lucide-react";
 import { useCourses, type Course, type Lesson } from "@/hooks/use-courses";
+import { useCampuses } from "@/hooks/use-campuses";
 import { CourseContentEditor } from "@/components/courses/CourseContentEditor";
+import { ImageUploader } from "@/components/shared/ImageUploader";
+import { CampusMultiSelect } from "@/components/shared/CampusMultiSelect";
 import { toast } from "sonner";
 
 const LEVELS = [
@@ -43,6 +46,7 @@ export default function CourseDetailPage() {
     updateLesson,
     deleteLesson,
   } = useCourses();
+  const { campuses } = useCampuses();
 
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,7 +56,10 @@ export default function CourseDetailPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [level, setLevel] = useState("");
+  const [campusIds, setCampusIds] = useState<string[]>([]);
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
+
 
   const loadCourse = useCallback(async () => {
     if (!id) return;
@@ -63,6 +70,8 @@ export default function CourseDetailPage() {
       setName(data.name);
       setDescription(data.description || "");
       setLevel(data.level || "");
+      setCampusIds(data.campus_ids || []);
+      setCoverImageUrl(data.cover_image_url || null);
     }
     setLoading(false);
   }, [id, fetchCourseWithContent]);
@@ -79,6 +88,8 @@ export default function CourseDetailPage() {
       name: name.trim(),
       description: description.trim() || null,
       level: level || null,
+      campus_ids: campusIds,
+      cover_image_url: coverImageUrl,
     });
     
     if (success) {
@@ -253,6 +264,17 @@ export default function CourseDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
+                <Label>Обкладинка курсу</Label>
+                <ImageUploader
+                  bucket="course-assets"
+                  folder="covers"
+                  value={coverImageUrl}
+                  onChange={(url) => { setCoverImageUrl(url); setHasChanges(true); }}
+                  aspectRatio="16/9"
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="name">Назва курсу *</Label>
                 <Input
                   id="name"
@@ -288,6 +310,13 @@ export default function CourseDetailPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              <CampusMultiSelect
+                campuses={campuses}
+                selected={campusIds}
+                onChange={(ids) => { setCampusIds(ids); setHasChanges(true); }}
+                label="Доступний для філій"
+              />
 
               <div className="pt-4">
                 <Button 
