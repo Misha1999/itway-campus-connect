@@ -1,12 +1,12 @@
-import { useState, useEffect, useMemo } from "react";
-import { format, isToday, isTomorrow, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, addDays } from "date-fns";
+import { useState, useEffect } from "react";
+import { format, isToday, isTomorrow, addDays, endOfWeek, differenceInMinutes, isPast } from "date-fns";
 import { uk } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import {
   Calendar,
@@ -19,10 +19,14 @@ import {
   Coins,
   BookOpen,
   ChevronRight,
-  Star,
   Trophy,
+  BarChart3,
+  Sparkles,
+  Timer,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+
+// ── Types ──────────────────────────────────────────────────
 
 interface StudentEvent {
   id: string;
@@ -48,6 +52,17 @@ interface StudentAssignment {
   status: string;
 }
 
+interface RecentGrade {
+  id: string;
+  score: number;
+  max_score: number;
+  work_type: string;
+  comment: string | null;
+  created_at: string;
+}
+
+// ── Config ─────────────────────────────────────────────────
+
 const eventTypeConfig: Record<string, { label: string; dot: string; bg: string; border: string }> = {
   lesson: { label: "Урок", dot: "bg-primary", bg: "bg-primary/8", border: "border-l-primary" },
   practice: { label: "Практика", dot: "bg-warning", bg: "bg-warning/8", border: "border-l-warning" },
@@ -56,127 +71,114 @@ const eventTypeConfig: Record<string, { label: string; dot: string; bg: string; 
   other: { label: "Інше", dot: "bg-muted-foreground", bg: "bg-muted", border: "border-l-muted-foreground" },
 };
 
+const levels = [
+  { level: 1, name: "Новачок", minCoins: 0, icon: "🌱" },
+  { level: 2, name: "Учень", minCoins: 100, icon: "📚" },
+  { level: 3, name: "Практик", minCoins: 300, icon: "⚡" },
+  { level: 4, name: "Знавець", minCoins: 600, icon: "🎯" },
+  { level: 5, name: "Майстер", minCoins: 1000, icon: "🏆" },
+  { level: 6, name: "Експерт", minCoins: 1500, icon: "💎" },
+  { level: 7, name: "Легенда", minCoins: 2500, icon: "👑" },
+];
+
+function getLevel(coins: number) {
+  let current = levels[0];
+  for (const l of levels) {
+    if (coins >= l.minCoins) current = l;
+    else break;
+  }
+  const nextIdx = levels.findIndex((l) => l.level === current.level) + 1;
+  const next = nextIdx < levels.length ? levels[nextIdx] : null;
+  const progressToNext = next
+    ? Math.round(((coins - current.minCoins) / (next.minCoins - current.minCoins)) * 100)
+    : 100;
+  return { current, next, progressToNext };
+}
+
+// ── Main Component ─────────────────────────────────────────
+
 export function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<StudentEvent[]>([]);
   const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
+  const [recentGrades, setRecentGrades] = useState<RecentGrade[]>([]);
   const [coinBalance, setCoinBalance] = useState(0);
   const [userName, setUserName] = useState("");
+  const [attendancePercent, setAttendancePercent] = useState(0);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Fetch profile
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("full_name")
-      .eq("user_id", user.id)
-      .single();
-    if (profile) setUserName(profile.full_name);
+    // Parallel fetches
+    const [profileRes, balanceRes, membershipsRes, gradesRes] = await Promise.all([
+      supabase.from("profiles").select("full_name").eq("user_id", user.id).single(),
+      supabase.rpc("get_coin_balance", { _student_id: user.id }),
+      supabase.from("group_memberships").select("group_id").eq("user_id", user.id).is("left_at", null),
+      supabase.from("grades").select("id, score, max_score, work_type, comment, created_at")
+        .eq("student_id", user.id).order("created_at", { ascending: false }).limit(3),
+    ]);
 
-    // Fetch coin balance
-    const { data: balance } = await supabase.rpc("get_coin_balance", { _student_id: user.id });
-    setCoinBalance(typeof balance === "number" ? balance : 0);
+    if (profileRes.data) setUserName(profileRes.data.full_name);
+    setCoinBalance(typeof balanceRes.data === "number" ? balanceRes.data : 0);
+    if (gradesRes.data) setRecentGrades(gradesRes.data);
 
-    // Fetch student's groups
-    const { data: memberships } = await supabase
-      .from("group_memberships")
-      .select("group_id")
-      .eq("user_id", user.id)
-      .is("left_at", null);
-
-    const groupIds = (memberships || []).map((m) => m.group_id);
+    const groupIds = (membershipsRes.data || []).map((m) => m.group_id);
 
     if (groupIds.length > 0) {
-      // Fetch upcoming events
       const now = new Date().toISOString();
       const weekEnd = endOfWeek(addDays(new Date(), 7), { weekStartsOn: 1 }).toISOString();
 
-      const { data: eventsData } = await supabase
-        .from("schedule_events")
-        .select(`
-          id, title, start_time, end_time, event_type, is_cancelled, online_link,
-          room_id, classroom_id,
-          groups:group_id (name),
-          classrooms:classroom_id (name),
-          rooms:room_id (name),
-          teacher_id
-        `)
-        .in("group_id", groupIds)
-        .gte("start_time", now)
-        .lte("start_time", weekEnd)
-        .eq("is_cancelled", false)
-        .order("start_time", { ascending: true })
-        .limit(20);
+      // Events + assignments + attendance in parallel
+      const [eventsRes, assignRes, attendRes, totalEventsRes] = await Promise.all([
+        supabase.from("schedule_events")
+          .select("id, title, start_time, end_time, event_type, is_cancelled, online_link, room_id, classroom_id, groups:group_id (name), classrooms:classroom_id (name), rooms:room_id (name), teacher_id")
+          .in("group_id", groupIds).gte("start_time", now).lte("start_time", weekEnd)
+          .eq("is_cancelled", false).order("start_time", { ascending: true }).limit(20),
+        supabase.from("assignments")
+          .select("id, title, deadline, group_id, groups:group_id (name)")
+          .in("group_id", groupIds).eq("status", "published").gte("deadline", now)
+          .order("deadline", { ascending: true }).limit(5),
+        supabase.from("attendance_records").select("status").eq("student_id", user.id)
+          .in("status", ["present", "late"]),
+        supabase.from("attendance_records").select("id").eq("student_id", user.id),
+      ]);
 
-      if (eventsData) {
-        const teacherIds = [...new Set(eventsData.map((e: any) => e.teacher_id).filter(Boolean))];
+      // Attendance percent
+      const total = totalEventsRes.data?.length || 0;
+      const present = attendRes.data?.length || 0;
+      setAttendancePercent(total > 0 ? Math.round((present / total) * 100) : 0);
+
+      // Process events
+      if (eventsRes.data) {
+        const teacherIds = [...new Set(eventsRes.data.map((e: any) => e.teacher_id).filter(Boolean))];
         let teacherMap: Record<string, string> = {};
         if (teacherIds.length > 0) {
-          const { data: profiles } = await supabase
-            .from("profiles")
-            .select("user_id, full_name")
-            .in("user_id", teacherIds);
-          if (profiles) {
-            teacherMap = Object.fromEntries(profiles.map((p) => [p.user_id, p.full_name]));
-          }
+          const { data: profiles } = await supabase.from("profiles").select("user_id, full_name").in("user_id", teacherIds);
+          if (profiles) teacherMap = Object.fromEntries(profiles.map((p) => [p.user_id, p.full_name]));
         }
-
-        setEvents(eventsData.map((e: any) => ({
-          id: e.id,
-          title: e.title,
-          start_time: e.start_time,
-          end_time: e.end_time,
-          event_type: e.event_type,
-          is_cancelled: e.is_cancelled,
-          online_link: e.online_link,
-          group_name: e.groups?.name,
-          teacher_name: e.teacher_id ? teacherMap[e.teacher_id] : undefined,
-          classroom_name: e.classrooms?.name,
-          room_name: e.rooms?.name,
-          room_id: e.room_id,
-          classroom_id: e.classroom_id,
+        setEvents(eventsRes.data.map((e: any) => ({
+          id: e.id, title: e.title, start_time: e.start_time, end_time: e.end_time,
+          event_type: e.event_type, is_cancelled: e.is_cancelled, online_link: e.online_link,
+          group_name: e.groups?.name, teacher_name: e.teacher_id ? teacherMap[e.teacher_id] : undefined,
+          classroom_name: e.classrooms?.name, room_name: e.rooms?.name,
+          room_id: e.room_id, classroom_id: e.classroom_id,
         })));
       }
 
-      // Fetch pending assignments
-      const { data: assignData } = await supabase
-        .from("assignments")
-        .select("id, title, deadline, group_id, groups:group_id (name)")
-        .in("group_id", groupIds)
-        .eq("status", "published")
-        .gte("deadline", now)
-        .order("deadline", { ascending: true })
-        .limit(5);
-
-      if (assignData) {
-        // Check submission status for each
-        const assignmentItems: StudentAssignment[] = [];
-        for (const a of assignData as any[]) {
+      // Process assignments with submission check
+      if (assignRes.data) {
+        const items: StudentAssignment[] = [];
+        for (const a of assignRes.data as any[]) {
           const { data: sub } = await supabase
-            .from("submissions")
-            .select("status")
-            .eq("assignment_id", a.id)
-            .eq("student_id", user.id)
-            .maybeSingle();
-
-          assignmentItems.push({
-            id: a.id,
-            title: a.title,
-            deadline: a.deadline,
-            group_name: a.groups?.name || "",
-            status: sub?.status || "not_started",
-          });
+            .from("submissions").select("status").eq("assignment_id", a.id).eq("student_id", user.id).maybeSingle();
+          items.push({ id: a.id, title: a.title, deadline: a.deadline, group_name: a.groups?.name || "", status: sub?.status || "not_started" });
         }
-        setAssignments(assignmentItems);
+        setAssignments(items);
       }
     }
-
     setLoading(false);
   };
 
@@ -192,15 +194,14 @@ export function StudentDashboard() {
   })();
 
   const firstName = userName.split(" ")[0] || "Студенте";
+  const { current: currentLevel, next: nextLevel, progressToNext } = getLevel(coinBalance);
 
   if (loading) {
     return (
       <div className="space-y-6 animate-fade-in">
         <Skeleton className="h-20 w-full rounded-xl" />
-        <div className="grid gap-4 md:grid-cols-3">
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-24 rounded-xl" />
+        <div className="grid gap-4 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
         </div>
         <Skeleton className="h-60 rounded-xl" />
       </div>
@@ -230,7 +231,7 @@ export function StudentDashboard() {
       </div>
 
       {/* Quick stats */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary/10">
@@ -255,7 +256,18 @@ export function StudentDashboard() {
             </div>
           </CardContent>
         </Card>
-        <Card className="col-span-2 md:col-span-1">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-success/10">
+              <BarChart3 className="h-5 w-5 text-success" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{attendancePercent}%</p>
+              <p className="text-xs text-muted-foreground">Відвідуваність</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-chart-4/10">
               <Coins className="h-5 w-5 text-[hsl(var(--chart-4))]" />
@@ -269,7 +281,7 @@ export function StudentDashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        {/* Today's schedule — takes more space */}
+        {/* Left column — schedule */}
         <div className="lg:col-span-3 space-y-4">
           {/* Today */}
           {todayEvents.length > 0 && (
@@ -281,9 +293,7 @@ export function StudentDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {todayEvents.map((event) => (
-                  <EventRow key={event.id} event={event} />
-                ))}
+                {todayEvents.map((event) => <EventRow key={event.id} event={event} />)}
               </CardContent>
             </Card>
           )}
@@ -295,9 +305,7 @@ export function StudentDashboard() {
                 <CardTitle className="text-base font-semibold text-muted-foreground">Завтра</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {tomorrowEvents.map((event) => (
-                  <EventRow key={event.id} event={event} />
-                ))}
+                {tomorrowEvents.map((event) => <EventRow key={event.id} event={event} />)}
               </CardContent>
             </Card>
           )}
@@ -309,9 +317,7 @@ export function StudentDashboard() {
                 <CardTitle className="text-base font-semibold text-muted-foreground">Найближчі дні</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {laterEvents.map((event) => (
-                  <EventRow key={event.id} event={event} showDate />
-                ))}
+                {laterEvents.map((event) => <EventRow key={event.id} event={event} showDate />)}
               </CardContent>
             </Card>
           )}
@@ -331,8 +337,9 @@ export function StudentDashboard() {
           </Button>
         </div>
 
-        {/* Right sidebar — assignments */}
+        {/* Right column */}
         <div className="lg:col-span-2 space-y-4">
+          {/* Assignments */}
           <Card>
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
               <CardTitle className="text-base font-semibold">Домашні завдання</CardTitle>
@@ -342,45 +349,38 @@ export function StudentDashboard() {
             </CardHeader>
             <CardContent className="space-y-3">
               {assignments.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Немає активних завдань 🎉
-                </p>
+                <p className="text-sm text-muted-foreground text-center py-4">Немає активних завдань 🎉</p>
               ) : (
-                assignments.map((a) => {
-                  const deadline = new Date(a.deadline);
-                  const isUrgent = isToday(deadline) || isTomorrow(deadline);
-                  const statusLabel: Record<string, string> = {
-                    not_started: "Не розпочато",
-                    in_progress: "У процесі",
-                    submitted: "Здано",
-                    reviewing: "На перевірці",
-                    accepted: "Зараховано",
-                    revision_needed: "Доопрацювати",
-                  };
+                assignments.map((a) => <AssignmentRow key={a.id} assignment={a} />)
+              )}
+            </CardContent>
+          </Card>
 
+          {/* Recent grades */}
+          <Card>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-base font-semibold">Останні оцінки</CardTitle>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/grades">Усі</Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {recentGrades.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Оцінок поки немає</p>
+              ) : (
+                recentGrades.map((g) => {
+                  const percent = Math.round((g.score / g.max_score) * 100);
+                  const color = percent >= 75 ? "text-success" : percent >= 50 ? "text-warning" : "text-destructive";
                   return (
-                    <div
-                      key={a.id}
-                      className={cn(
-                        "rounded-lg border p-3 transition-colors",
-                        isUrgent && a.status !== "submitted" && a.status !== "accepted"
-                          ? "border-warning/40 bg-warning/5"
-                          : "border-border"
-                      )}
-                    >
-                      <p className="text-sm font-medium text-foreground line-clamp-1">{a.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{a.group_name}</p>
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-[11px] text-muted-foreground">
-                          {format(deadline, "d MMM, HH:mm", { locale: uk })}
-                        </span>
-                        <Badge
-                          variant={a.status === "accepted" ? "default" : a.status === "submitted" || a.status === "reviewing" ? "secondary" : "outline"}
-                          className="text-[10px] h-5"
-                        >
-                          {statusLabel[a.status] || a.status}
-                        </Badge>
+                    <div key={g.id} className="flex items-center gap-3 rounded-lg border p-3">
+                      <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-muted">
+                        <span className={cn("text-sm font-bold", color)}>{g.score}/{g.max_score}</span>
                       </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground capitalize">{g.work_type}</p>
+                        {g.comment && <p className="text-xs text-muted-foreground line-clamp-1">{g.comment}</p>}
+                      </div>
+                      <span className={cn("text-sm font-bold", color)}>{percent}%</span>
                     </div>
                   );
                 })
@@ -388,21 +388,37 @@ export function StudentDashboard() {
             </CardContent>
           </Card>
 
-          {/* Coins card */}
+          {/* Level card */}
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-chart-4/10">
-                  <Trophy className="h-6 w-6 text-[hsl(var(--chart-4))]" />
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-primary/10 text-xl">
+                  {currentLevel.icon}
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Твій баланс</p>
-                  <p className="text-xl font-bold text-foreground">{coinBalance} монет</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">Рівень {currentLevel.level}</span>
+                    <Badge variant="secondary" className="text-xs">{currentLevel.name}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{coinBalance} монет</p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="w-full mt-3" asChild>
-                <Link to="/coins">Історія монет</Link>
-              </Button>
+              {nextLevel && (
+                <>
+                  <Progress value={progressToNext} className="h-2 mb-1.5" />
+                  <p className="text-[11px] text-muted-foreground">
+                    До «{nextLevel.name}» — ще {nextLevel.minCoins - coinBalance} монет
+                  </p>
+                </>
+              )}
+              <div className="flex gap-2 mt-3">
+                <Button variant="outline" size="sm" className="flex-1" asChild>
+                  <Link to="/coins">Монети</Link>
+                </Button>
+                <Button variant="outline" size="sm" className="flex-1" asChild>
+                  <Link to="/achievements">Досягнення</Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -411,21 +427,25 @@ export function StudentDashboard() {
   );
 }
 
+// ── Sub-components ─────────────────────────────────────────
+
 function EventRow({ event, showDate = false }: { event: StudentEvent; showDate?: boolean }) {
   const cfg = eventTypeConfig[event.event_type] || eventTypeConfig.other;
   const start = new Date(event.start_time);
   const end = new Date(event.end_time);
   const isOnline = !event.room_id && !event.classroom_id;
 
+  // Status indicator
+  const now = new Date();
+  const minutesUntil = differenceInMinutes(start, now);
+  const isNow = now >= start && now <= end;
+  const isSoon = minutesUntil > 0 && minutesUntil <= 30;
+
   return (
-    <div
-      className={cn(
-        "flex items-center gap-3 rounded-lg border-l-[3px] p-3 transition-colors hover:bg-muted/50",
-        cfg.bg,
-        cfg.border
-      )}
-    >
-      {/* Time */}
+    <div className={cn(
+      "flex items-center gap-3 rounded-lg border-l-[3px] p-3 transition-colors hover:bg-muted/50",
+      cfg.bg, cfg.border
+    )}>
       <div className="flex flex-col items-center min-w-[48px]">
         {showDate && (
           <span className="text-[10px] font-medium text-muted-foreground uppercase">
@@ -436,7 +456,6 @@ function EventRow({ event, showDate = false }: { event: StudentEvent; showDate?:
         <span className="text-[10px] text-muted-foreground">{format(end, "HH:mm")}</span>
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground truncate">{event.title}</p>
         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
@@ -454,21 +473,56 @@ function EventRow({ event, showDate = false }: { event: StudentEvent; showDate?:
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex items-center gap-2">
+        {isNow && (
+          <Badge className="text-[10px] h-5 bg-success/10 text-success border-success/30">Зараз</Badge>
+        )}
+        {isSoon && !isNow && (
+          <Badge variant="outline" className="text-[10px] h-5">
+            <Timer className="h-3 w-3 mr-0.5" />
+            {minutesUntil} хв
+          </Badge>
+        )}
         <Badge variant="outline" className={cn("text-[10px] h-5 border-none", cfg.dot.replace("bg-", "text-"))}>
           {cfg.label}
         </Badge>
         {isOnline && event.online_link && (
-          <a
-            href={event.online_link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-          >
+          <a href={event.online_link} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs font-medium text-primary hover:underline">
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         )}
+      </div>
+    </div>
+  );
+}
+
+function AssignmentRow({ assignment }: { assignment: StudentAssignment }) {
+  const deadline = new Date(assignment.deadline);
+  const isUrgent = isToday(deadline) || isTomorrow(deadline);
+  const statusLabel: Record<string, string> = {
+    not_started: "Не розпочато", in_progress: "У процесі", submitted: "Здано",
+    reviewing: "На перевірці", accepted: "Зараховано", revision_needed: "Доопрацювати",
+  };
+
+  return (
+    <div className={cn(
+      "rounded-lg border p-3 transition-colors",
+      isUrgent && assignment.status !== "submitted" && assignment.status !== "accepted"
+        ? "border-warning/40 bg-warning/5" : "border-border"
+    )}>
+      <p className="text-sm font-medium text-foreground line-clamp-1">{assignment.title}</p>
+      <p className="text-xs text-muted-foreground mt-0.5">{assignment.group_name}</p>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-[11px] text-muted-foreground">
+          {format(deadline, "d MMM, HH:mm", { locale: uk })}
+        </span>
+        <Badge
+          variant={assignment.status === "accepted" ? "default" : assignment.status === "submitted" || assignment.status === "reviewing" ? "secondary" : "outline"}
+          className="text-[10px] h-5"
+        >
+          {statusLabel[assignment.status] || assignment.status}
+        </Badge>
       </div>
     </div>
   );

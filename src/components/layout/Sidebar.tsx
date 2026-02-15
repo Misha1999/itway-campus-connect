@@ -20,6 +20,9 @@ import {
   ChevronRight,
   LogOut,
   Menu,
+  Trophy,
+  TrendingUp,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -32,13 +35,16 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { title: "Дашборд", href: "/dashboard", icon: LayoutDashboard },
+  { title: "Головна", href: "/dashboard", icon: LayoutDashboard },
   { title: "Заклади", href: "/campuses", icon: Building2, roles: ["admin_network"] },
   { title: "Користувачі", href: "/users", icon: Users, roles: ["admin_network", "admin_campus"] },
   { title: "Групи", href: "/groups", icon: GraduationCap, roles: ["admin_network", "admin_campus", "teacher"] },
   { title: "Розклад", href: "/schedule", icon: Calendar },
   { title: "Журнал", href: "/gradebook", icon: ClipboardList, roles: ["admin_network", "admin_campus", "teacher"] },
-  { title: "Домашні завдання", href: "/assignments", icon: FileText },
+  { title: "Завдання", href: "/assignments", icon: FileText },
+  { title: "Оцінки", href: "/grades", icon: BarChart3, roles: ["student"] },
+  { title: "Прогрес", href: "/progress", icon: TrendingUp, roles: ["student"] },
+  { title: "Досягнення", href: "/achievements", icon: Trophy, roles: ["student"] },
   { title: "Матеріали", href: "/library", icon: BookOpen, roles: ["admin_network", "admin_campus", "teacher"] },
   { title: "Монети", href: "/coins", icon: Coins },
   { title: "Сповіщення", href: "/notifications", icon: Bell },
