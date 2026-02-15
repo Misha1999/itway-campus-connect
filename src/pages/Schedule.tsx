@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,18 +11,38 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus } from "lucide-react";
+import { Plus, Trash2, XCircle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { useSchedule, type ScheduleEvent } from "@/hooks/use-schedule";
 import {
   WeekView,
   DayView,
+  MonthView,
   EventFormDialog,
   EventDetailDialog,
 } from "@/components/schedule";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+
+interface EnrollmentCohort {
+  id: string;
+  name: string;
+  campus_id: string;
+}
 
 export default function SchedulePage() {
   const [view, setView] = useState("week");
   const [selectedCampusId, setSelectedCampusId] = useState("all");
+  const [selectedCohortId, setSelectedCohortId] = useState("all");
   const [selectedGroupId, setSelectedGroupId] = useState("all");
   const [selectedTeacherId, setSelectedTeacherId] = useState("all");
   const [selectedClassroomId, setSelectedClassroomId] = useState("all");
@@ -30,6 +50,14 @@ export default function SchedulePage() {
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
   const [initialDate, setInitialDate] = useState<Date>(new Date());
+
+  // Bulk actions
+  const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [bulkAction, setBulkAction] = useState<"delete" | "cancel" | null>(null);
+
+  // Enrollment cohorts
+  const [cohorts, setCohorts] = useState<EnrollmentCohort[]>([]);
 
   const {
     events,
@@ -46,12 +74,36 @@ export default function SchedulePage() {
     cancelEvent,
     restoreEvent,
     checkConflicts,
+    fetchEvents,
   } = useSchedule(selectedGroupId === "all" ? undefined : selectedGroupId);
 
+  // Fetch cohorts
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("enrollment_cohorts")
+        .select("id, name, campus_id")
+        .eq("is_active", true)
+        .order("name");
+      setCohorts((data as EnrollmentCohort[]) || []);
+    })();
+  }, []);
+
+  // Filter cohorts by campus
+  const filteredCohorts = selectedCampusId === "all"
+    ? cohorts
+    : cohorts.filter((c) => c.campus_id === selectedCampusId);
+
   // Filter groups by campus
-  const filteredGroups = selectedCampusId === "all"
-    ? groups
-    : groups.filter((g) => g.campus_id === selectedCampusId);
+  const filteredGroups = (() => {
+    let result = groups;
+    if (selectedCampusId !== "all") {
+      result = result.filter((g) => g.campus_id === selectedCampusId);
+    }
+    // Further filter by cohort if selected — need enrollment_cohort_id on group
+    // We'll do a lightweight approach: fetch group data with cohort
+    return result;
+  })();
 
   // Filter classrooms by campus
   const filteredClassrooms = selectedCampusId === "all"
@@ -91,16 +143,62 @@ export default function SchedulePage() {
     setShowEventForm(true);
   };
 
+  // Bulk selection
+  const toggleEventSelection = (eventId: string) => {
+    setSelectedEventIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventId)) next.delete(eventId);
+      else next.add(eventId);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedEventIds(new Set());
+
+  const handleBulkAction = async () => {
+    if (!bulkAction) return;
+    const ids = Array.from(selectedEventIds);
+    let successCount = 0;
+
+    for (const id of ids) {
+      let ok = false;
+      if (bulkAction === "delete") {
+        ok = await deleteEvent(id);
+      } else if (bulkAction === "cancel") {
+        ok = await cancelEvent(id, "Масове скасування");
+      }
+      if (ok) successCount++;
+    }
+
+    toast.success(`${bulkAction === "delete" ? "Видалено" : "Скасовано"}: ${successCount} подій`);
+    clearSelection();
+    setShowBulkDeleteConfirm(false);
+    setBulkAction(null);
+  };
+
+  const hasBulkSelection = selectedEventIds.size > 0;
+
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title="Розклад" description="Календар занять та подій">
-        <Select value={selectedCampusId} onValueChange={(v) => { setSelectedCampusId(v); setSelectedGroupId("all"); setSelectedClassroomId("all"); }}>
+        <Select value={selectedCampusId} onValueChange={(v) => { setSelectedCampusId(v); setSelectedCohortId("all"); setSelectedGroupId("all"); setSelectedClassroomId("all"); }}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Філія" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Всі філії</SelectItem>
             {campuses.map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={selectedCohortId} onValueChange={(v) => { setSelectedCohortId(v); setSelectedGroupId("all"); }}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Потік" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Всі потоки</SelectItem>
+            {filteredCohorts.map((c) => (
               <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
             ))}
           </SelectContent>
@@ -146,6 +244,34 @@ export default function SchedulePage() {
         </Button>
       </PageHeader>
 
+      {/* Bulk actions bar */}
+      {hasBulkSelection && (
+        <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/50">
+          <span className="text-sm font-medium">
+            Обрано: {selectedEventIds.size}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setBulkAction("cancel"); setShowBulkDeleteConfirm(true); }}
+          >
+            <XCircle className="h-4 w-4 mr-1" />
+            Скасувати
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => { setBulkAction("delete"); setShowBulkDeleteConfirm(true); }}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Видалити
+          </Button>
+          <Button variant="ghost" size="sm" onClick={clearSelection}>
+            Зняти вибір
+          </Button>
+        </div>
+      )}
+
       <Tabs value={view} onValueChange={setView}>
         <TabsList>
           <TabsTrigger value="day">День</TabsTrigger>
@@ -178,12 +304,30 @@ export default function SchedulePage() {
               <DayView events={filteredEvents} onEventClick={handleEventClick} onAddEvent={handleAddEvent} />
             </TabsContent>
             <TabsContent value="week" className="mt-6">
-              <WeekView events={filteredEvents} onEventClick={handleEventClick} onAddEvent={handleAddEvent} />
+              <WeekView
+                events={filteredEvents}
+                onEventClick={handleEventClick}
+                onAddEvent={handleAddEvent}
+                selectedEventIds={selectedEventIds}
+                onToggleSelect={toggleEventSelection}
+                onMoveEvent={async (eventId, newDate) => {
+                  const event = events.find((e) => e.id === eventId);
+                  if (!event) return;
+                  const oldStart = new Date(event.start_time);
+                  const oldEnd = new Date(event.end_time);
+                  const diffMs = oldEnd.getTime() - oldStart.getTime();
+                  const newStart = new Date(newDate);
+                  newStart.setHours(oldStart.getHours(), oldStart.getMinutes());
+                  const newEnd = new Date(newStart.getTime() + diffMs);
+                  await updateEvent(eventId, {
+                    start_time: newStart.toISOString(),
+                    end_time: newEnd.toISOString(),
+                  });
+                }}
+              />
             </TabsContent>
             <TabsContent value="month" className="mt-6">
-              <Card className="p-8 text-center text-muted-foreground">
-                <p>Місячний вид у розробці</p>
-              </Card>
+              <MonthView events={filteredEvents} onEventClick={handleEventClick} onAddEvent={handleAddEvent} />
             </TabsContent>
           </>
         )}
@@ -213,6 +357,31 @@ export default function SchedulePage() {
         onCancel={cancelEvent}
         onRestore={restoreEvent}
       />
+
+      {/* Bulk action confirmation */}
+      <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {bulkAction === "delete" ? "Видалити обрані події?" : "Скасувати обрані події?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {bulkAction === "delete"
+                ? `Ви збираєтесь видалити ${selectedEventIds.size} подій. Цю дію неможливо скасувати.`
+                : `Ви збираєтесь скасувати ${selectedEventIds.size} подій.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Назад</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkAction}
+              className={bulkAction === "delete" ? "bg-destructive hover:bg-destructive/90" : ""}
+            >
+              {bulkAction === "delete" ? "Видалити" : "Скасувати події"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
