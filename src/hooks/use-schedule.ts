@@ -260,6 +260,39 @@ export function useSchedule(selectedGroupId?: string) {
     return data;
   };
 
+  const createEventsBatch = async (
+    items: Omit<ScheduleEvent, "id" | "group_name" | "teacher_name" | "room_name" | "classroom_name">[]
+  ) => {
+    const rows = items.map((eventData) => ({
+      title: eventData.title,
+      description: eventData.description,
+      start_time: eventData.start_time,
+      end_time: eventData.end_time,
+      event_type: eventData.event_type,
+      is_cancelled: eventData.is_cancelled || false,
+      cancelled_reason: eventData.cancelled_reason || null,
+      online_link: eventData.online_link,
+      group_id: eventData.group_id,
+      teacher_id: eventData.teacher_id,
+      room_id: eventData.room_id,
+      classroom_id: eventData.classroom_id,
+      lesson_id: eventData.lesson_id,
+    }));
+
+    const { error } = await supabase
+      .from("schedule_events")
+      .insert(rows);
+
+    if (error) {
+      console.error("Error batch creating events:", error);
+      toast.error("Помилка створення подій");
+      return null;
+    }
+    toast.success(`Створено ${items.length} подій`);
+    await fetchEvents();
+    return true;
+  };
+
   const updateEvent = async (id: string, eventData: Partial<ScheduleEvent>) => {
     const updateData: any = {};
     if (eventData.title !== undefined) updateData.title = eventData.title;
@@ -352,6 +385,7 @@ export function useSchedule(selectedGroupId?: string) {
     loading,
     fetchEvents,
     createEvent,
+    createEventsBatch,
     updateEvent,
     deleteEvent,
     cancelEvent,
