@@ -470,12 +470,12 @@ export function EventFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Редагувати подію" : "Нова подія"}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <div className="flex-1 overflow-y-auto pr-2">
           <div className="space-y-5 py-4">
             {/* Conflict warnings */}
             {hasConflicts && !isDateRange && (
@@ -815,7 +815,7 @@ export function EventFormDialog({
               <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Додатковий опис" rows={2} />
             </div>
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="pt-4 border-t">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Скасувати</Button>
