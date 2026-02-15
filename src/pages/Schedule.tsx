@@ -22,6 +22,7 @@ import {
   EventFormDialog,
   EventDetailDialog,
 } from "@/components/schedule";
+import { TimeGridSettings, useTimeGridConfig } from "@/components/schedule/TimeGridSettings";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,6 +60,8 @@ export default function SchedulePage() {
 
   // Enrollment cohorts
   const [cohorts, setCohorts] = useState<EnrollmentCohort[]>([]);
+
+  const { config: timeGridConfig, updateConfig: updateTimeGridConfig } = useTimeGridConfig();
 
   const {
     events,
@@ -181,7 +184,7 @@ export default function SchedulePage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <PageHeader title="Розклад" description="Календар занять та подій">
+      <PageHeader title={<span className="flex items-center gap-1">Розклад <TimeGridSettings config={timeGridConfig} onUpdate={updateTimeGridConfig} /></span>} description="Календар занять та подій">
         <Select value={selectedCampusId} onValueChange={(v) => { setSelectedCampusId(v); setSelectedCohortId("all"); setSelectedGroupId("all"); setSelectedClassroomId("all"); }}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Філія" />
@@ -306,6 +309,7 @@ export default function SchedulePage() {
             </TabsContent>
             <TabsContent value="week" className="mt-6">
               <WeekView
+                timeGridConfig={timeGridConfig}
                 events={filteredEvents}
                 onEventClick={handleEventClick}
                 onAddEvent={handleAddEvent}
