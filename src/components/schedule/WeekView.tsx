@@ -102,7 +102,7 @@ export function WeekView({ events, onEventClick, onAddEvent }: WeekViewProps) {
               <div className="space-y-2">
                 {dayEvents.map((event) => {
                   const startTime = new Date(event.start_time);
-                  const isOnline = !event.room_id;
+                  const isOnline = !event.room_id && !event.classroom_id;
 
                   return (
                     <Card
@@ -131,7 +131,7 @@ export function WeekView({ events, onEventClick, onAddEvent }: WeekViewProps) {
                             <MapPin className="h-3 w-3 text-muted-foreground" />
                           )}
                           <span className="text-xs text-muted-foreground truncate">
-                            {isOnline ? "Онлайн" : event.room_name}
+                            {isOnline ? "Онлайн" : (event.classroom_name || event.room_name || "—")}
                           </span>
                         </div>
                       </CardContent>

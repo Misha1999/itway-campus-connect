@@ -9,6 +9,7 @@ export interface Classroom {
   capacity: number | null;
   notes: string | null;
   is_active: boolean;
+  is_universal: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -18,6 +19,7 @@ export interface ClassroomFormData {
   capacity: number | null;
   notes: string | null;
   is_active: boolean;
+  is_universal: boolean;
 }
 
 export function useClassrooms(campusId: string) {
@@ -51,7 +53,8 @@ export function useClassrooms(campusId: string) {
       capacity: data.capacity,
       notes: data.notes,
       is_active: data.is_active,
-    });
+      is_universal: data.is_universal,
+    } as any);
 
     if (error) {
       toast.error("Помилка створення аудиторії");
@@ -70,7 +73,8 @@ export function useClassrooms(campusId: string) {
         capacity: data.capacity,
         notes: data.notes,
         is_active: data.is_active,
-      })
+        is_universal: data.is_universal,
+      } as any)
       .eq("id", id);
 
     if (error) {

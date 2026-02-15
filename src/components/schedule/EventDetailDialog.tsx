@@ -85,7 +85,7 @@ export function EventDetailDialog({
 
   const startDate = new Date(event.start_time);
   const endDate = new Date(event.end_time);
-  const isOnline = !event.room_id;
+  const isOnline = !event.room_id && !event.classroom_id;
 
   const handleDelete = async () => {
     setLoading(true);
@@ -192,7 +192,7 @@ export function EventDetailDialog({
                   {isOnline ? "Формат" : "Аудиторія"}
                 </p>
                 <p className="font-medium">
-                  {isOnline ? "Онлайн" : event.room_name}
+                  {isOnline ? "Онлайн" : (event.classroom_name || event.room_name || "—")}
                 </p>
               </div>
             </div>

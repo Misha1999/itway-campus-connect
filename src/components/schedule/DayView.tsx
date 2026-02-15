@@ -80,7 +80,7 @@ export function DayView({ events, onEventClick, onAddEvent }: DayViewProps) {
           dayEvents.map((event) => {
             const startTime = new Date(event.start_time);
             const endTime = new Date(event.end_time);
-            const isOnline = !event.room_id;
+            const isOnline = !event.room_id && !event.classroom_id;
 
             return (
               <Card
@@ -121,7 +121,7 @@ export function DayView({ events, onEventClick, onAddEvent }: DayViewProps) {
                           ) : (
                             <MapPin className="h-4 w-4" />
                           )}
-                          <span>{isOnline ? "Онлайн" : event.room_name}</span>
+                          <span>{isOnline ? "Онлайн" : (event.classroom_name || event.room_name || "—")}</span>
                         </div>
                         {event.teacher_name && (
                           <div className="flex items-center gap-1">
